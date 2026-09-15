@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onOpenProfile: () -> Unit,
     onOpenOrders: () -> Unit,
+    onOpenPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -30,6 +31,9 @@ fun HomeScreen(
         }
         Button(onClick = onOpenOrders, modifier = Modifier.padding(top = 12.dp)) {
             Text("Orders demo")
+        }
+        Button(onClick = onOpenPicker, modifier = Modifier.padding(top = 12.dp)) {
+            Text("Item picker demo")
         }
     }
 }

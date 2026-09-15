@@ -45,7 +45,7 @@ class ProfileViewModelTest {
 
         // Assert
         val expected = UserProfile(name = "Ada Lovelace", email = "ada@example.com")
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value)
+        assertEquals(RetryUiState.Success(expected), viewModel.state.value.request)
     }
 
     @Test
@@ -61,7 +61,8 @@ class ProfileViewModelTest {
 
         // Assert
         assertEquals(Scenario.ALWAYS_FAIL, scenarios.scenario.value)
-        val feedback = viewModel.state.value as RetryUiState.Feedback
+        assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
+        val feedback = viewModel.state.value.request as RetryUiState.Feedback
         assertEquals(0, feedback.retriesUsed)
     }
 

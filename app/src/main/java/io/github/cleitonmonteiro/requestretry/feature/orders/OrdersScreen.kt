@@ -22,13 +22,12 @@ fun OrdersRoute(
     modifier: Modifier = Modifier,
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    val scenario by viewModel.scenario.collectAsStateWithLifecycle()
+    val uiState by viewModel.state.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(selected = scenario, onSelect = viewModel::setScenario)
+        ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
         RetryStateScaffold(
-            state = state,
+            state = uiState.request,
             onRetry = viewModel::retry,
             onLeave = onLeave,
             modifier = Modifier.fillMaxSize(),
