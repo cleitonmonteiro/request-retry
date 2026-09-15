@@ -10,7 +10,10 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.repository.ProfileRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
+import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.RetryPolicy
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import kotlin.time.Duration
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -64,6 +67,9 @@ class ProfileViewModelTest {
 
     private fun newViewModel(scenarios: ScenarioHolder): ProfileViewModel {
         val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(FakeNetwork(scenarios)))
-        return ProfileViewModel(GetProfileUseCase(repository), scenarios)
+        // A zero-delay policy keeps this test deterministic and independent of the jittered
+        // production default — the payoff of RetryController going through an injected factory.
+        val retryControllers = RetryControllerFactory { Duration.ZERO }
+        return ProfileViewModel(GetProfileUseCase(repository), scenarios, retryControllers)
     }
 }

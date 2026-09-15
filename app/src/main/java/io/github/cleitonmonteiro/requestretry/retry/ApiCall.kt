@@ -1,6 +1,8 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
-/** A single mocked network call returning [T], or throwing on failure. */
+import kotlinx.coroutines.flow.Flow
+
+/** A single mocked network call, as a single-shot [Flow]: one emission of [T], or a failure. */
 fun interface ApiCall<out T> {
-    suspend operator fun invoke(): T
+    operator fun invoke(): Flow<T>
 }

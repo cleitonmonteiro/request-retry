@@ -7,6 +7,9 @@ import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -19,7 +22,7 @@ class RetryControllerTest {
     @Test
     fun `load emits Success after the call succeeds`() = runTest {
         // Arrange
-        val controller = RetryController(scope = this, apiCall = ApiCall { "payload" })
+        val controller = RetryController(scope = this, apiCall = ApiCall { flowOf("payload") })
 
         // Act
         controller.load()
@@ -34,7 +37,7 @@ class RetryControllerTest {
         // Arrange
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { throw IOException("boom") },
+            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
         )
 
         // Act
@@ -54,8 +57,10 @@ class RetryControllerTest {
         // Arrange
         var callCount = 0
         val api = ApiCall<String> {
-            callCount++
-            if (callCount == 1) throw IOException("boom") else "payload"
+            flow {
+                callCount++
+                if (callCount == 1) throw IOException("boom") else emit("payload")
+            }
         }
         val controller = RetryController(
             scope = this,
@@ -88,7 +93,7 @@ class RetryControllerTest {
         // Arrange
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { throw IOException("boom") },
+            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
             retryPolicy = RetryPolicy { Duration.ZERO },
         )
         controller.load()
@@ -111,7 +116,7 @@ class RetryControllerTest {
         // Arrange
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { throw IOException("boom") },
+            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
             retryPolicy = RetryPolicy { Duration.ZERO },
         )
         controller.load()
@@ -134,7 +139,7 @@ class RetryControllerTest {
     fun `load resets the retry budget after a previous session recovered`() = runTest {
         // Arrange
         var shouldFail = true
-        val api = ApiCall<String> { if (shouldFail) throw IOException("boom") else "payload" }
+        val api = ApiCall<String> { flow { if (shouldFail) throw IOException("boom") else emit("payload") } }
         val controller = RetryController(
             scope = this,
             apiCall = api,
@@ -157,5 +162,26 @@ class RetryControllerTest {
         val feedback = controller.state.value as RetryUiState.Feedback
         assertEquals(0, feedback.retriesUsed)
         assertTrue(feedback.canRetry)
+    }
+
+    @Test
+    fun `cancelling a superseded job does not surface a spurious Feedback`() = runTest {
+        // Arrange: a call that never resolves before being superseded
+        val api = ApiCall<String> { flow { delay(5.seconds); emit("payload") } }
+        val controller = RetryController(scope = this, apiCall = api)
+
+        controller.state.test {
+            skipItems(1) // initial Loading()
+
+            // Act: start a call, then supersede it with a fresh load() before it resolves
+            controller.load()
+            controller.load()
+            advanceUntilIdle()
+
+            // Assert: a spurious Feedback from the cancelled first job would be buffered
+            // ahead of this and fail the assertion — only the second call's Success follows
+            assertEquals(RetryUiState.Success("payload"), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 }

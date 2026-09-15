@@ -5,6 +5,7 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ProfileRemoteDataSourc
 import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -18,7 +19,7 @@ class ProfileRepositoryImplTest {
         val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(FakeNetwork(scenarios)))
 
         // Act
-        val profile = repository.getProfile()
+        val profile = repository.getProfile().first()
 
         // Assert
         assertEquals(UserProfile(name = "Ada Lovelace", email = "ada@example.com"), profile)

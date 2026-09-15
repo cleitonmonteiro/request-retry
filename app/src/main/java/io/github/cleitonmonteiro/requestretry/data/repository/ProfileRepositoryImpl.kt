@@ -5,9 +5,11 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ProfileRemoteDataSourc
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.repository.ProfileRepository
 import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 class ProfileRepositoryImpl @Inject constructor(
     private val remote: ProfileRemoteDataSource,
 ) : ProfileRepository {
-    override suspend fun getProfile(): UserProfile = remote.fetchProfile().toDomain()
+    override fun getProfile(): Flow<UserProfile> = flow { emit(remote.fetchProfile().toDomain()) }
 }

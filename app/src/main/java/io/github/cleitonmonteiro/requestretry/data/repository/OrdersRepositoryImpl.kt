@@ -5,9 +5,11 @@ import io.github.cleitonmonteiro.requestretry.data.remote.OrdersRemoteDataSource
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 class OrdersRepositoryImpl @Inject constructor(
     private val remote: OrdersRemoteDataSource,
 ) : OrdersRepository {
-    override suspend fun getOrders(): List<Order> = remote.fetchOrders().map { it.toDomain() }
+    override fun getOrders(): Flow<List<Order>> = flow { emit(remote.fetchOrders().map { it.toDomain() }) }
 }

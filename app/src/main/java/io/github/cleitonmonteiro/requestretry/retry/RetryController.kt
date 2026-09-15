@@ -1,12 +1,15 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -46,20 +49,23 @@ class RetryController<T>(
         job?.cancel()
         job = scope.launch {
             if (delayBefore > Duration.ZERO) awaitBackoff(delayBefore)
-            _state.value = RetryUiState.Loading(backoffSecondsRemaining = null)
-            runCatching { apiCall() }
-                .onSuccess { _state.value = RetryUiState.Success(it) }
-                .onFailure { error ->
-                    // A cancelled job (e.g. a newer load()/retry() superseding this one) must not
-                    // be reported as a failed request — let it propagate and die quietly instead.
-                    if (error is CancellationException) throw error
-                    _state.value = RetryUiState.Feedback(
-                        message = error.message ?: "Something went wrong",
-                        retriesUsed = retriesUsed,
-                        maxRetries = maxRetries,
-                        canRetry = retriesUsed < maxRetries,
+            apiCall()
+                .map<T, RetryUiState<T>> { RetryUiState.Success(it) }
+                .onStart { emit(RetryUiState.Loading(backoffSecondsRemaining = null)) }
+                .catch { error ->
+                    // Flow.catch is transparent to cancellation and rethrows it rather than
+                    // reaching this block, so a superseded job (a newer load()/retry()) dies
+                    // quietly instead of being reported as a failed request.
+                    emit(
+                        RetryUiState.Feedback(
+                            message = error.message ?: "Something went wrong",
+                            retriesUsed = retriesUsed,
+                            maxRetries = maxRetries,
+                            canRetry = retriesUsed < maxRetries,
+                        )
                     )
                 }
+                .collect { _state.value = it }
         }
     }
 
