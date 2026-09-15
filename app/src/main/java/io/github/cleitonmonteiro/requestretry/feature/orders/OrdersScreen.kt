@@ -10,8 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 
@@ -19,7 +20,7 @@ import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 fun OrdersRoute(
     onLeave: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: OrdersViewModel = viewModel(),
+    viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scenario by viewModel.scenario.collectAsStateWithLifecycle()

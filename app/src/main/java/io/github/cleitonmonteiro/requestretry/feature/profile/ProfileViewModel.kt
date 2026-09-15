@@ -2,23 +2,26 @@ package io.github.cleitonmonteiro.requestretry.feature.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.cleitonmonteiro.requestretry.data.FakeApi
-import io.github.cleitonmonteiro.requestretry.data.Scenario
+import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
+import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
+import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
+import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
+import io.github.cleitonmonteiro.requestretry.retry.ApiCall
 import io.github.cleitonmonteiro.requestretry.retry.RetryController
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
-import kotlinx.coroutines.flow.MutableStateFlow
+import javax.inject.Inject
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
-class ProfileViewModel(
-    private val api: FakeApi<UserProfile> = FakeApi { sampleProfile },
+@HiltViewModel
+class ProfileViewModel @Inject constructor(
+    private val getProfile: GetProfileUseCase,
+    private val scenarios: ScenarioHolder,
 ) : ViewModel() {
 
-    private val controller = RetryController(scope = viewModelScope, apiCall = api)
+    private val controller = RetryController(scope = viewModelScope, apiCall = ApiCall { getProfile() })
     val state: StateFlow<RetryUiState<UserProfile>> = controller.state
-
-    private val _scenario = MutableStateFlow(api.scenario)
-    val scenario: StateFlow<Scenario> = _scenario.asStateFlow()
+    val scenario: StateFlow<Scenario> = scenarios.scenario
 
     init {
         controller.load()
@@ -27,8 +30,7 @@ class ProfileViewModel(
     fun retry() = controller.retry()
 
     fun setScenario(scenario: Scenario) {
-        api.scenario = scenario
-        _scenario.value = scenario
+        scenarios.select(scenario)
         controller.load()
     }
 }

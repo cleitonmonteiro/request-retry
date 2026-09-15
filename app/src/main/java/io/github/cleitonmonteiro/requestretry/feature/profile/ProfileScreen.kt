@@ -2,14 +2,15 @@ package io.github.cleitonmonteiro.requestretry.feature.profile
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.padding
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 
@@ -17,7 +18,7 @@ import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 fun ProfileRoute(
     onLeave: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: ProfileViewModel = viewModel(),
+    viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scenario by viewModel.scenario.collectAsStateWithLifecycle()
