@@ -14,8 +14,7 @@ class ItemsRemoteDataSource @Inject constructor(
         httpClient.get("$BASE_URL/items").body()
     }
 
-    /** The server echoes the id back in its confirmation payload. */
-    suspend fun submitItem(itemId: String): String = apiClient.execute {
-        httpClient.post("$BASE_URL/items/$itemId/send").body<SendItemResponseDto>().itemId
+    suspend fun submitItem(itemId: String): SendItemResponseDto = apiClient.execute {
+        httpClient.post("$BASE_URL/items/$itemId/send").body()
     }
 }

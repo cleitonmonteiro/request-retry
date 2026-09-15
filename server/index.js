@@ -16,6 +16,13 @@ const items = [
   { item_id: 'I-3', item_name: 'Notebook' },
 ];
 
+// One send-response action per item, so the demo exercises all three SDUI action types.
+const sendActionByItemId = {
+  'I-1': { action_type: 'deeplink', target: 'requestretry://orders' },
+  'I-2': { action_type: 'external_link', target: 'https://example.com/track/I-2' },
+  'I-3': { action_type: 'close' },
+};
+
 function sendJson(res, status, body) {
   const json = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -37,7 +44,9 @@ const server = http.createServer((req, res) => {
   }
   const sendMatch = req.method === 'POST' && url.pathname.match(/^\/items\/([^/]+)\/send$/);
   if (sendMatch) {
-    return sendJson(res, 200, { item_id: sendMatch[1] });
+    const itemId = sendMatch[1];
+    const action = sendActionByItemId[itemId] || { action_type: 'close' };
+    return sendJson(res, 200, { item_id: itemId, action });
   }
 
   sendJson(res, 404, { error: `No mocked route for ${req.method} ${url.pathname}` });

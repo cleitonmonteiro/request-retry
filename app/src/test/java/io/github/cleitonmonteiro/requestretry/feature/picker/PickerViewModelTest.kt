@@ -9,6 +9,8 @@ import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.remote.mockHttpClient
 import io.github.cleitonmonteiro.requestretry.data.repository.ItemsRepositoryImpl
+import io.github.cleitonmonteiro.requestretry.domain.model.Action
+import io.github.cleitonmonteiro.requestretry.domain.model.ActionType
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
@@ -64,8 +66,9 @@ class PickerViewModelTest {
         viewModel.selectItem(item)
         advanceUntilIdle()
 
-        // Assert
-        assertEquals(RetryUiState.Success(Unit), viewModel.state.value.send)
+        // Assert: I-1's mocked response carries a DEEPLINK action, per newViewModel's routing
+        val expected = Action(type = ActionType.DEEPLINK, target = "requestretry://orders")
+        assertEquals(RetryUiState.Success(expected), viewModel.state.value.send)
     }
 
     @Test
@@ -84,7 +87,8 @@ class PickerViewModelTest {
         advanceUntilIdle()
 
         // Assert
-        assertEquals(RetryUiState.Success(Unit), viewModel.state.value.send)
+        val expected = Action(type = ActionType.DEEPLINK, target = "requestretry://orders")
+        assertEquals(RetryUiState.Success(expected), viewModel.state.value.send)
         assertEquals(itemsFeedbackBeforeSend, viewModel.state.value.items)
         assertTrue(viewModel.state.value.items is RetryUiState.Feedback)
     }
@@ -96,8 +100,10 @@ class PickerViewModelTest {
                     """[{"item_id":"I-1","item_name":"Backpack"},""" +
                         """{"item_id":"I-2","item_name":"Water bottle"},""" +
                         """{"item_id":"I-3","item_name":"Notebook"}]"""
-                path.startsWith("/items/") && path.endsWith("/send") ->
-                    """{"item_id":"${path.removePrefix("/items/").removeSuffix("/send")}"}"""
+                path.startsWith("/items/") && path.endsWith("/send") -> {
+                    val id = path.removePrefix("/items/").removeSuffix("/send")
+                    """{"item_id":"$id","action":{"action_type":"deeplink","target":"requestretry://orders"}}"""
+                }
                 else -> error("Unexpected request path: $path")
             }
         }

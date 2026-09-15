@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
+import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
@@ -24,7 +25,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 data class PickerUiState(
     val items: RetryUiState<List<Item>>,
-    val send: RetryUiState<Unit>,
+    val send: RetryUiState<Action>,
     val selectedItem: Item?,
     val scenario: Scenario,
 )

@@ -10,8 +10,12 @@ data class ItemDto(
     @SerialName("item_name") val itemName: String,
 )
 
-/** The send-item endpoint's confirmation payload: it echoes the submitted id back. */
+/**
+ * The send-item endpoint's confirmation payload: it echoes the submitted id back, plus an
+ * SDUI-style [action] telling the client what to do next.
+ */
 @Serializable
 data class SendItemResponseDto(
     @SerialName("item_id") val itemId: String,
+    @SerialName("action") val action: ActionDto,
 )
