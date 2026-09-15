@@ -12,16 +12,17 @@ import kotlinx.coroutines.delay
 class FakeNetwork @Inject constructor(
     private val scenarios: ScenarioHolder,
 ) {
-    private var lastScenario: Scenario? = null
+    private var lastGeneration = scenarios.generation.value
     private var attempt = 0
 
     suspend fun <T> execute(payload: () -> T): T {
-        val scenario = scenarios.scenario.value
-        if (scenario != lastScenario) {
-            lastScenario = scenario
+        val generation = scenarios.generation.value
+        if (generation != lastGeneration) {
+            lastGeneration = generation
             attempt = 0
         }
         attempt++
+        val scenario = scenarios.scenario.value
         delay(600.milliseconds)
         val shouldFail = when (scenario) {
             Scenario.ALWAYS_SUCCEED -> false

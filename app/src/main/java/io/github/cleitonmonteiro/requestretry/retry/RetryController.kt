@@ -1,5 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,6 +50,9 @@ class RetryController<T>(
             runCatching { apiCall() }
                 .onSuccess { _state.value = RetryUiState.Success(it) }
                 .onFailure { error ->
+                    // A cancelled job (e.g. a newer load()/retry() superseding this one) must not
+                    // be reported as a failed request — let it propagate and die quietly instead.
+                    if (error is CancellationException) throw error
                     _state.value = RetryUiState.Feedback(
                         message = error.message ?: "Something went wrong",
                         retriesUsed = retriesUsed,

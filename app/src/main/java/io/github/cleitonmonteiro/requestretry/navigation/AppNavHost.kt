@@ -31,8 +31,8 @@ fun AppNavHost(
                 onOpenOrders = { navController.navigate(Routes.ORDERS) },
             )
         }
-        // Each ViewModel is scoped to this NavBackStackEntry via the default viewModel()
-        // factory, so leaving and re-entering a demo always starts with a fresh retry budget.
+        // Each ViewModel is scoped to this NavBackStackEntry via hiltViewModel(), so leaving
+        // and re-entering a demo always starts with a fresh retry budget.
         composable(Routes.PROFILE) {
             ProfileRoute(onLeave = { navController.popBackStack() })
         }
