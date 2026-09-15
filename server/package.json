@@ -1,0 +1,10 @@
+{
+  "name": "requestretry-mock-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mocked JSON backend for the RequestRetry Android app's Ktor client.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

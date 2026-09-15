@@ -3,10 +3,11 @@
 package io.github.cleitonmonteiro.requestretry.feature.profile
 
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
-import io.github.cleitonmonteiro.requestretry.data.remote.FakeNetwork
+import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.ProfileRemoteDataSource
 import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
+import io.github.cleitonmonteiro.requestretry.data.remote.mockHttpClient
 import io.github.cleitonmonteiro.requestretry.data.repository.ProfileRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
@@ -24,7 +25,7 @@ import org.junit.Test
 /**
  * Thin test confirming [ProfileViewModel] wires itself to [io.github.cleitonmonteiro.requestretry.retry.RetryController]
  * and [ScenarioHolder] correctly — the retry/backoff behavior itself is covered by
- * RetryControllerTest, and FakeNetwork's scenario handling by FakeNetworkTest.
+ * RetryControllerTest, and ApiClient's scenario handling by ApiClientTest.
  */
 class ProfileViewModelTest {
 
@@ -67,7 +68,8 @@ class ProfileViewModelTest {
     }
 
     private fun newViewModel(scenarios: ScenarioHolder): ProfileViewModel {
-        val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(FakeNetwork(scenarios)))
+        val httpClient = mockHttpClient { """{"full_name":"Ada Lovelace","email_address":"ada@example.com"}""" }
+        val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(httpClient, ApiClient(scenarios)))
         // A zero-delay policy keeps this test deterministic and independent of the jittered
         // production default — the payoff of RetryController going through an injected factory.
         val retryControllers = RetryControllerFactory { Duration.ZERO }

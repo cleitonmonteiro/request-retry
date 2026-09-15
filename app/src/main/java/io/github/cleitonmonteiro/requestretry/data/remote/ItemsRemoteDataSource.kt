@@ -1,12 +1,21 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.post
 import javax.inject.Inject
 
 class ItemsRemoteDataSource @Inject constructor(
-    private val network: FakeNetwork,
+    private val httpClient: HttpClient,
+    private val apiClient: ApiClient,
 ) {
-    suspend fun fetchItems(): List<ItemDto> = network.execute { sampleItemDtos }
+    suspend fun fetchItems(): List<ItemDto> = apiClient.execute {
+        httpClient.get("$BASE_URL/items").body()
+    }
 
-    /** Stands in for a real submission response — echoes the id back as a confirmation. */
-    suspend fun submitItem(itemId: String): String = network.execute { itemId }
+    /** The server echoes the id back in its confirmation payload. */
+    suspend fun submitItem(itemId: String): String = apiClient.execute {
+        httpClient.post("$BASE_URL/items/$itemId/send").body<SendItemResponseDto>().itemId
+    }
 }

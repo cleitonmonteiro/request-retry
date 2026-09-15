@@ -10,7 +10,7 @@ class OrderMapperTest {
     @Test
     fun `toDomain maps fields and parses the total amount into a double`() {
         // Arrange
-        val dto = OrderDto(order_id = "A-1001", item_name = "Mechanical keyboard", total_amount = "89.90")
+        val dto = OrderDto(orderId = "A-1001", itemName = "Mechanical keyboard", totalAmount = "89.90")
 
         // Act
         val order = dto.toDomain()

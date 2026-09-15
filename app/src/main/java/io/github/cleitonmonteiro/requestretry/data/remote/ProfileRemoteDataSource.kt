@@ -1,9 +1,15 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
 import javax.inject.Inject
 
 class ProfileRemoteDataSource @Inject constructor(
-    private val network: FakeNetwork,
+    private val httpClient: HttpClient,
+    private val apiClient: ApiClient,
 ) {
-    suspend fun fetchProfile(): ProfileDto = network.execute { sampleProfileDto }
+    suspend fun fetchProfile(): ProfileDto = apiClient.execute {
+        httpClient.get("$BASE_URL/profile").body()
+    }
 }

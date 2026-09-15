@@ -1,9 +1,11 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
-/** Wire-shaped: fields as a real profile endpoint might name them. */
-data class ProfileDto(
-    val full_name: String,
-    val email_address: String,
-)
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-internal val sampleProfileDto = ProfileDto(full_name = "Ada Lovelace", email_address = "ada@example.com")
+/** Wire-shaped: [SerialName] documents the snake_case keys the profile endpoint sends. */
+@Serializable
+data class ProfileDto(
+    @SerialName("full_name") val fullName: String,
+    @SerialName("email_address") val emailAddress: String,
+)

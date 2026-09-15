@@ -1,13 +1,17 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
-/** Wire-shaped: a real catalog endpoint would name fields like this. */
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+/** Wire-shaped: [SerialName] documents the snake_case keys the catalog endpoint sends. */
+@Serializable
 data class ItemDto(
-    val item_id: String,
-    val item_name: String,
+    @SerialName("item_id") val itemId: String,
+    @SerialName("item_name") val itemName: String,
 )
 
-internal val sampleItemDtos = listOf(
-    ItemDto(item_id = "I-1", item_name = "Backpack"),
-    ItemDto(item_id = "I-2", item_name = "Water bottle"),
-    ItemDto(item_id = "I-3", item_name = "Notebook"),
+/** The send-item endpoint's confirmation payload: it echoes the submitted id back. */
+@Serializable
+data class SendItemResponseDto(
+    @SerialName("item_id") val itemId: String,
 )

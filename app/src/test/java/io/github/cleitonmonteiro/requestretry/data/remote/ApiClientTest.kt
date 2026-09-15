@@ -6,16 +6,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class FakeNetworkTest {
+class ApiClientTest {
 
     @Test
     fun `execute succeeds immediately under ALWAYS_SUCCEED`() = runTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
-        val network = FakeNetwork(scenarios)
+        val client = ApiClient(scenarios)
 
         // Act
-        val result = network.execute { "payload" }
+        val result = client.execute { "payload" }
 
         // Assert
         assertEquals("payload", result)
@@ -25,10 +25,10 @@ class FakeNetworkTest {
     fun `execute always fails under ALWAYS_FAIL`() = runTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
-        val network = FakeNetwork(scenarios)
+        val client = ApiClient(scenarios)
 
         // Act
-        val thrown = runCatching { network.execute { "payload" } }.exceptionOrNull()
+        val thrown = runCatching { client.execute { "payload" } }.exceptionOrNull()
 
         // Assert
         assertTrue(thrown is IOException)
@@ -38,12 +38,12 @@ class FakeNetworkTest {
     fun `execute succeeds only from the third call under SUCCEED_ON_THIRD_ATTEMPT`() = runTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
-        val network = FakeNetwork(scenarios)
+        val client = ApiClient(scenarios)
 
         // Act
-        val firstAttempt = runCatching { network.execute { "payload" } }.exceptionOrNull()
-        val secondAttempt = runCatching { network.execute { "payload" } }.exceptionOrNull()
-        val thirdAttempt = network.execute { "payload" }
+        val firstAttempt = runCatching { client.execute { "payload" } }.exceptionOrNull()
+        val secondAttempt = runCatching { client.execute { "payload" } }.exceptionOrNull()
+        val thirdAttempt = client.execute { "payload" }
 
         // Assert
         assertTrue(firstAttempt is IOException)
@@ -55,13 +55,13 @@ class FakeNetworkTest {
     fun `re-selecting the same scenario restarts the attempt count`() = runTest {
         // Arrange: burn two attempts of SUCCEED_ON_THIRD_ATTEMPT, one short of success
         val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
-        val network = FakeNetwork(scenarios)
-        runCatching { network.execute { "payload" } }
-        runCatching { network.execute { "payload" } }
+        val client = ApiClient(scenarios)
+        runCatching { client.execute { "payload" } }
+        runCatching { client.execute { "payload" } }
 
         // Act: re-tapping the same scenario chip should start the demo over
         scenarios.select(Scenario.SUCCEED_ON_THIRD_ATTEMPT)
-        val afterReselect = runCatching { network.execute { "payload" } }.exceptionOrNull()
+        val afterReselect = runCatching { client.execute { "payload" } }.exceptionOrNull()
 
         // Assert
         assertTrue(afterReselect is IOException)

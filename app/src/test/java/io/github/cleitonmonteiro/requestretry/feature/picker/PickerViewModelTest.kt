@@ -3,10 +3,11 @@
 package io.github.cleitonmonteiro.requestretry.feature.picker
 
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
-import io.github.cleitonmonteiro.requestretry.data.remote.FakeNetwork
+import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.ItemsRemoteDataSource
 import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
+import io.github.cleitonmonteiro.requestretry.data.remote.mockHttpClient
 import io.github.cleitonmonteiro.requestretry.data.repository.ItemsRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
@@ -26,10 +27,11 @@ import org.junit.Test
 /**
  * Thin test confirming [PickerViewModel] wires its two [io.github.cleitonmonteiro.requestretry.retry.RetryController]s
  * correctly — the retry/backoff behavior itself is covered by RetryControllerTest, and
- * FakeNetwork's scenario handling by FakeNetworkTest.
+ * ApiClient's scenario handling by ApiClientTest.
  *
- * Wires the same real repository chain twice — once per use case — exactly mirroring what
- * Hilt actually builds, since each use case resolves its own unscoped FakeNetwork instance.
+ * Wires the same real repository chain twice — once per use case, sharing one mocked
+ * [io.ktor.client.HttpClient] but each with its own [ApiClient] — exactly mirroring what Hilt
+ * actually builds, since `HttpClient` is `@Singleton` but `ApiClient` is unscoped.
  */
 class PickerViewModelTest {
 
@@ -88,8 +90,19 @@ class PickerViewModelTest {
     }
 
     private fun newViewModel(scenarios: ScenarioHolder): PickerViewModel {
-        val getItems = GetItemsUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(FakeNetwork(scenarios))))
-        val sendItem = SendItemUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(FakeNetwork(scenarios))))
+        val httpClient = mockHttpClient { path ->
+            when {
+                path == "/items" ->
+                    """[{"item_id":"I-1","item_name":"Backpack"},""" +
+                        """{"item_id":"I-2","item_name":"Water bottle"},""" +
+                        """{"item_id":"I-3","item_name":"Notebook"}]"""
+                path.startsWith("/items/") && path.endsWith("/send") ->
+                    """{"item_id":"${path.removePrefix("/items/").removeSuffix("/send")}"}"""
+                else -> error("Unexpected request path: $path")
+            }
+        }
+        val getItems = GetItemsUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(httpClient, ApiClient(scenarios))))
+        val sendItem = SendItemUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(httpClient, ApiClient(scenarios))))
         val retryControllers = RetryControllerFactory(RetryPolicy { Duration.ZERO })
         return PickerViewModel(getItems, sendItem, scenarios, retryControllers)
     }
