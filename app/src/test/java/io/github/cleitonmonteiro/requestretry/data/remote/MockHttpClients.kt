@@ -31,7 +31,7 @@ fun mockHttpClient(respondTo: (path: String) -> String): HttpClient {
     }
     return HttpClient(MockEngine(engineConfig)) {
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+            json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
         }
     }
 }

@@ -19,7 +19,9 @@ object NetworkModule {
     @Singleton
     fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+            // coerceInputValues: an unrecognized enum value (e.g. a future ActionTypeDto the
+            // server added) decodes to its default instead of throwing — see ActionDto's doc.
+            json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
         }
     }
 }

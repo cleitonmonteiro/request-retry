@@ -17,10 +17,11 @@ const items = [
 ];
 
 // One send-response action per item, so the demo exercises all three SDUI action types.
+// `label` is the button text — the client renders it as-is, it never hardcodes copy per type.
 const sendActionByItemId = {
-  'I-1': { action_type: 'deeplink', target: 'requestretry://orders' },
-  'I-2': { action_type: 'external_link', target: 'https://example.com/track/I-2' },
-  'I-3': { action_type: 'close' },
+  'I-1': { action_type: 'deeplink', target: 'requestretry://orders', label: 'View orders' },
+  'I-2': { action_type: 'external_link', target: 'https://example.com/track/I-2', label: 'Track shipment' },
+  'I-3': { action_type: 'close', label: 'Done' },
 };
 
 function sendJson(res, status, body) {
@@ -45,7 +46,7 @@ const server = http.createServer((req, res) => {
   const sendMatch = req.method === 'POST' && url.pathname.match(/^\/items\/([^/]+)\/send$/);
   if (sendMatch) {
     const itemId = sendMatch[1];
-    const action = sendActionByItemId[itemId] || { action_type: 'close' };
+    const action = sendActionByItemId[itemId] || { action_type: 'close', label: 'Done' };
     return sendJson(res, 200, { item_id: itemId, action });
   }
 
