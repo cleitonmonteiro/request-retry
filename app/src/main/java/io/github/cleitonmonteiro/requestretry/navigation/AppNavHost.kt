@@ -7,6 +7,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
+import io.github.cleitonmonteiro.requestretry.feature.createorder.CreateOrderRoute
 import io.github.cleitonmonteiro.requestretry.feature.home.HomeScreen
 import io.github.cleitonmonteiro.requestretry.feature.orders.OrdersRoute
 import io.github.cleitonmonteiro.requestretry.feature.picker.PickerRoute
@@ -19,6 +20,7 @@ private object Routes {
     const val PROFILE = "profile"
     const val ORDERS = "orders"
     const val PICKER = "picker"
+    const val CREATE_ORDER = "create_order"
 }
 
 /**
@@ -47,6 +49,7 @@ fun AppNavHost(
                     onOpenProfile = { navController.navigate(Routes.PROFILE) },
                     onOpenOrders = { navController.navigate(Routes.ORDERS) },
                     onOpenPicker = { navController.navigate(Routes.PICKER) },
+                    onOpenCreateOrder = { navController.navigate(Routes.CREATE_ORDER) },
                 )
             }
             // Each ViewModel is scoped to this NavBackStackEntry via hiltViewModel(), so leaving
@@ -68,6 +71,12 @@ fun AppNavHost(
                 deepLinks = listOf(navDeepLink { uriPattern = "$DEEPLINK_SCHEME://${Routes.PICKER}" }),
             ) {
                 PickerRoute(onLeave = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.CREATE_ORDER,
+                deepLinks = listOf(navDeepLink { uriPattern = "$DEEPLINK_SCHEME://${Routes.CREATE_ORDER}" }),
+            ) {
+                CreateOrderRoute(onLeave = { navController.popBackStack() })
             }
         }
     }

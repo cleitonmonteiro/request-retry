@@ -19,6 +19,7 @@ fun HomeScreen(
     onOpenProfile: () -> Unit,
     onOpenOrders: () -> Unit,
     onOpenPicker: () -> Unit,
+    onOpenCreateOrder: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -38,6 +39,9 @@ fun HomeScreen(
         }
         Button(onClick = onOpenPicker, modifier = Modifier.padding(top = 12.dp)) {
             Text("Item picker demo")
+        }
+        Button(onClick = onOpenCreateOrder, modifier = Modifier.padding(top = 12.dp)) {
+            Text("Create order demo")
         }
         // A plain Android intent, not a NavController.navigate call — this destination is
         // deliberately outside AppNavHost's NavHost, see MigrationDemoActivity's doc comment.

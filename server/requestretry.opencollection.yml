@@ -1,0 +1,82 @@
+# OpenCollection (https://opencollection.com) file for the RequestRetry mock server (server/index.js).
+# Import into Bruno (https://www.usebruno.com) — File > Import Collection > Open Collection Format.
+opencollection: "1.0.0"
+info:
+  name: RequestRetry Mock Server
+  summary: >-
+    Endpoints exposed by the Node mock server in server/ that the RequestRetry Android app's
+    Ktor client talks to. The server always succeeds — client-side failure is injected by the
+    app's ApiClient/ScenarioHolder, not here.
+  version: "1.0.0"
+  authors:
+    - name: Cleiton Monteiro
+      email: cleitonmonteiro.dev@gmail.com
+request:
+  variables:
+    - name: baseUrl
+      value: http://localhost:8090
+items:
+  - info:
+      name: Get Profile
+      type: http
+      seq: 1
+    http:
+      method: GET
+      url: "{{baseUrl}}/profile"
+
+  - info:
+      name: Orders
+      type: folder
+      seq: 2
+    items:
+      - info:
+          name: List Orders
+          type: http
+          seq: 1
+        http:
+          method: GET
+          url: "{{baseUrl}}/orders"
+
+      - info:
+          name: Create Order
+          type: http
+          seq: 2
+        http:
+          method: POST
+          url: "{{baseUrl}}/orders"
+          headers:
+            - name: Content-Type
+              value: application/json
+          body:
+            type: json
+            data: |-
+              {
+                "item_name": "Mechanical keyboard",
+                "quantity": 2,
+                "customer_name": "Ada Lovelace"
+              }
+
+  - info:
+      name: Items
+      type: folder
+      seq: 3
+    items:
+      - info:
+          name: List Items
+          type: http
+          seq: 1
+        http:
+          method: GET
+          url: "{{baseUrl}}/items"
+
+      - info:
+          name: Send Item
+          type: http
+          seq: 2
+        http:
+          method: POST
+          url: "{{baseUrl}}/items/:itemId/send"
+          params:
+            - name: itemId
+              value: I-1
+              type: path

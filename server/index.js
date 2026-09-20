@@ -30,6 +30,17 @@ function sendJson(res, status, body) {
   res.end(json);
 }
 
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (chunk) => { data += chunk; });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); } catch (err) { reject(err); }
+    });
+    req.on('error', reject);
+  });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   console.log(`${req.method} ${url.pathname}`);
@@ -39,6 +50,20 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/orders') {
     return sendJson(res, 200, orders);
+  }
+  if (req.method === 'POST' && url.pathname === '/orders') {
+    readJsonBody(req)
+      .then((body) => {
+        const created = {
+          order_id: `A-${1000 + orders.length + 1}`,
+          item_name: body.item_name || 'Untitled item',
+          total_amount: ((Number(body.quantity) || 1) * 19.99).toFixed(2),
+        };
+        orders.push(created);
+        sendJson(res, 201, created);
+      })
+      .catch(() => sendJson(res, 400, { error: 'Invalid JSON body' }));
+    return; // response is written asynchronously once the body resolves
   }
   if (req.method === 'GET' && url.pathname === '/items') {
     return sendJson(res, 200, items);

@@ -13,45 +13,42 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class GetOrdersUseCaseTest {
+class CreateOrderUseCaseTest {
 
     @Test
-    fun `invoke returns orders sorted by total descending`() = runTest {
+    fun `invoke returns the order created by the repository`() = runTest {
         // Arrange
-        val unsorted = listOf(
-            Order(id = "A-1", item = "Cheap", total = 10.0),
-            Order(id = "A-2", item = "Expensive", total = 100.0),
-            Order(id = "A-3", item = "Mid", total = 50.0),
-        )
-        val useCase = GetOrdersUseCase(FakeOrdersRepository(orders = unsorted))
+        val created = Order(id = "A-1004", item = "Backpack", total = 59.97)
+        val useCase = CreateOrderUseCase(FakeOrdersRepository(created = created))
+        val request = NewOrderRequest(itemName = "Backpack", quantity = 3, customerName = "Ada")
 
         // Act
-        val result = useCase().first()
+        val result = useCase(request).first()
 
         // Assert
-        assertEquals(listOf("A-2", "A-3", "A-1"), result.map { it.id })
+        assertEquals(created, result)
     }
 
     @Test
     fun `invoke propagates a repository failure instead of swallowing it`() = runTest {
-        // Arrange: the failure now surfaces on collection, not on invoke() itself
-        val useCase = GetOrdersUseCase(FakeOrdersRepository(failure = IOException("boom")))
+        // Arrange
+        val useCase = CreateOrderUseCase(FakeOrdersRepository(failure = IOException("boom")))
+        val request = NewOrderRequest(itemName = "Backpack", quantity = 1, customerName = "Ada")
 
         // Act
-        val thrown = runCatching { useCase().first() }.exceptionOrNull()
+        val thrown = runCatching { useCase(request).first() }.exceptionOrNull()
 
         // Assert
         assertTrue(thrown is IOException)
     }
 
     private class FakeOrdersRepository(
-        private val orders: List<Order> = emptyList(),
+        private val created: Order? = null,
         private val failure: Throwable? = null,
     ) : OrdersRepository {
-        override fun getOrders(): Flow<List<Order>> =
-            failure?.let { flow { throw it } } ?: flowOf(orders)
+        override fun getOrders(): Flow<List<Order>> = flowOf(emptyList())
 
         override fun createOrder(request: NewOrderRequest): Flow<Order> =
-            error("not used by this test")
+            failure?.let { flow { throw it } } ?: flowOf(requireNotNull(created))
     }
 }
