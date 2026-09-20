@@ -31,6 +31,7 @@ data class CreateOrderUiState(
     val hasSubmitted: Boolean,
     val result: RetryUiState<Order>,
     val scenario: Scenario,
+    val validationError: String?,
 )
 
 /**
@@ -50,6 +51,7 @@ class CreateOrderViewModel @Inject constructor(
 
     private val _formInput = MutableStateFlow(OrderFormInput())
     private val _hasSubmitted = MutableStateFlow(false)
+    private val _validationError = MutableStateFlow<String?>(null)
     private val controller = retryControllers.create(viewModelScope) { createOrder(lastSubmittedRequest) }
 
     val state: StateFlow<CreateOrderUiState> = combine(
@@ -57,6 +59,7 @@ class CreateOrderViewModel @Inject constructor(
         _hasSubmitted,
         controller.state,
         scenarios.scenario,
+        _validationError,
         ::CreateOrderUiState,
     ).stateIn(
         scope = viewModelScope,
@@ -66,15 +69,18 @@ class CreateOrderViewModel @Inject constructor(
             hasSubmitted = _hasSubmitted.value,
             result = controller.state.value,
             scenario = scenarios.scenario.value,
+            validationError = _validationError.value,
         ),
     )
 
     fun onItemNameChanged(value: String) {
         _formInput.update { it.copy(itemName = value) }
+        _validationError.value = null
     }
 
     fun onQuantityChanged(value: String) {
         _formInput.update { it.copy(quantity = value.filter(Char::isDigit)) }
+        _validationError.value = null
     }
 
     fun onCustomerNameChanged(value: String) {
@@ -83,11 +89,20 @@ class CreateOrderViewModel @Inject constructor(
 
     fun submit() {
         val input = _formInput.value
-        val quantity = input.quantity.toIntOrNull() ?: return
-        if (input.itemName.isBlank()) return
+        val quantity = input.quantity.toIntOrNull()
+        val error = when {
+            input.itemName.isBlank() -> "Item name is required"
+            quantity == null || quantity <= 0 -> "Quantity must be a positive number"
+            else -> null
+        }
+        if (error != null) {
+            _validationError.value = error
+            return
+        }
+        _validationError.value = null
         lastSubmittedRequest = NewOrderRequest(
             itemName = input.itemName.trim(),
-            quantity = quantity,
+            quantity = requireNotNull(quantity),
             customerName = input.customerName.trim(),
         )
         _hasSubmitted.value = true
