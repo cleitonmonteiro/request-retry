@@ -2,6 +2,7 @@
 
 package io.github.cleitonmonteiro.requestretry.feature.profile
 
+import app.cash.turbine.test
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.ProfileRemoteDataSource
@@ -41,7 +42,7 @@ class ProfileViewModelTest {
         scenarios.select(Scenario.ALWAYS_SUCCEED)
 
         // Act
-        viewModel.retry()
+        viewModel.onIntent(ProfileIntent.Retry)
         advanceUntilIdle()
 
         // Assert
@@ -57,7 +58,7 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         // Act
-        viewModel.setScenario(Scenario.ALWAYS_FAIL)
+        viewModel.onIntent(ProfileIntent.SelectScenario(Scenario.ALWAYS_FAIL))
         advanceUntilIdle()
 
         // Assert
@@ -65,6 +66,21 @@ class ProfileViewModelTest {
         assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
         val feedback = viewModel.state.value.request as RetryUiState.Feedback
         assertEquals(1, feedback.retriesUsed)
+    }
+
+    @Test
+    fun `leave emits a navigation effect`() = runTest {
+        // Arrange
+        val viewModel = newViewModel(ScenarioHolder())
+
+        viewModel.effects.test {
+            // Act
+            viewModel.onIntent(ProfileIntent.Leave)
+
+            // Assert
+            assertEquals(ProfileEffect.NavigateBack, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     private fun newViewModel(scenarios: ScenarioHolder): ProfileViewModel {

@@ -2,6 +2,7 @@
 
 package io.github.cleitonmonteiro.requestretry.feature.createorder
 
+import app.cash.turbine.test
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.NewOrderRequestDto
@@ -38,7 +39,7 @@ import org.junit.Test
 /**
  * [CreateOrderViewModel] wires a multi-field form into a single [io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest].
  * The interesting case here isn't the happy path (covered generically by every other
- * ViewModel test) — it's that [CreateOrderViewModel.retry] must resend the exact request that
+ * ViewModel test) — it's that [CreateOrderIntent.Retry] must resend the exact request that
  * was submitted, even if the form has since been edited without a new submit.
  */
 class CreateOrderViewModelTest {
@@ -56,16 +57,35 @@ class CreateOrderViewModelTest {
         }
 
         // Act
-        viewModel.onItemNameChanged("Backpack")
-        viewModel.onQuantityChanged("3")
-        viewModel.onCustomerNameChanged("Ada")
-        viewModel.submit()
+        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
+        viewModel.onIntent(CreateOrderIntent.ChangeQuantity("3"))
+        viewModel.onIntent(CreateOrderIntent.ChangeCustomerName("Ada"))
+        viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
 
         // Assert
         val expected = Order(id = "A-2000", item = "Backpack", total = 59.97)
         assertEquals(RetryUiState.Success(expected), viewModel.state.value.result)
-        assertTrue(viewModel.state.value.hasSubmitted)
+    }
+
+    @Test
+    fun `successful submit emits its confirmation as a one-off effect`() = runTest {
+        // Arrange
+        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
+        val viewModel = newViewModel(scenarios, mutableListOf()) {
+            """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
+        }
+
+        viewModel.effects.test {
+            // Act
+            viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
+            viewModel.onIntent(CreateOrderIntent.Submit)
+            advanceUntilIdle()
+
+            // Assert
+            assertEquals(CreateOrderEffect.ShowOrderCreated("A-2000"), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -77,17 +97,17 @@ class CreateOrderViewModelTest {
         val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
-        viewModel.onItemNameChanged("Backpack")
-        viewModel.onQuantityChanged("3")
-        viewModel.onCustomerNameChanged("Ada")
-        viewModel.submit()
+        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
+        viewModel.onIntent(CreateOrderIntent.ChangeQuantity("3"))
+        viewModel.onIntent(CreateOrderIntent.ChangeCustomerName("Ada"))
+        viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
         check(viewModel.state.value.result is RetryUiState.Feedback)
 
         // Act: edit the form without submitting again, then retry
-        viewModel.onItemNameChanged("Something else")
-        viewModel.onQuantityChanged("99")
-        viewModel.retry()
+        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Something else"))
+        viewModel.onIntent(CreateOrderIntent.ChangeQuantity("99"))
+        viewModel.onIntent(CreateOrderIntent.Retry)
         advanceUntilIdle()
 
         // Assert: both requests that went out were for the original submission
@@ -110,13 +130,13 @@ class CreateOrderViewModelTest {
         val viewModel = newViewModel(scenarios, capturedBodies) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
-        viewModel.onItemNameChanged("Backpack")
-        viewModel.submit()
+        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
+        viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
         check(viewModel.state.value.result is RetryUiState.Success)
 
         // Act: tap a scenario chip after the order was already created
-        viewModel.setScenario(Scenario.ALWAYS_FAIL)
+        viewModel.onIntent(CreateOrderIntent.SelectScenario(Scenario.ALWAYS_FAIL))
         advanceUntilIdle()
 
         // Assert: POST /orders is not idempotent — a scenario change must never replay it

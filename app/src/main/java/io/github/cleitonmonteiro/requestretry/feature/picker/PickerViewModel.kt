@@ -12,10 +12,12 @@ import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -30,11 +32,23 @@ data class PickerUiState(
     val scenario: Scenario,
 )
 
+sealed interface PickerIntent {
+    data object RetryItems : PickerIntent
+    data object RetrySend : PickerIntent
+    data object Leave : PickerIntent
+    data class SelectItem(val item: Item) : PickerIntent
+    data class SelectScenario(val scenario: Scenario) : PickerIntent
+}
+
+sealed interface PickerEffect {
+    data object NavigateBack : PickerEffect
+}
+
 /**
  * Two independent requests on one screen: [itemsController] loads automatically like every
- * other screen, but [sendController] is built up front and left unstarted until [selectItem]
- * calls its `load()` for the first time — a controller starts in [RetryUiState.Idle], so the UI
- * can safely render it before then. Their two [RetryUiState]s
+ * other screen, but [sendController] is built up front and left unstarted until
+ * [PickerIntent.SelectItem] causes its `load()` for the first time — a controller starts in
+ * [RetryUiState.Idle], so the UI can safely render it before then. Their two [RetryUiState]s
  * are folded into one [PickerUiState] alongside the selection and scenario, so the screen still
  * has a single source of truth even though it's driven by four independent flows underneath.
  */
@@ -53,6 +67,7 @@ class PickerViewModel @Inject constructor(
         sendItem(requireNotNull(itemToSend))
     }
     private val _selectedItem = MutableStateFlow<Item?>(null)
+    private val _effects = Channel<PickerEffect>(Channel.BUFFERED)
 
     val state: StateFlow<PickerUiState> = combine(
         itemsController.state,
@@ -70,25 +85,28 @@ class PickerViewModel @Inject constructor(
             scenario = scenarios.scenario.value,
         ),
     )
+    val effects = _effects.receiveAsFlow()
 
     init {
         itemsController.load()
     }
 
-    fun retryItems() = itemsController.retry()
-
-    fun retrySend() = sendController.retry()
-
-    fun selectItem(item: Item) {
-        itemToSend = item
-        _selectedItem.value = item
-        sendController.load() // fires (or re-fires, for a different item) immediately on selection
-    }
-
-    fun setScenario(scenario: Scenario) {
-        scenarios.select(scenario)
-        itemsController.load()
-        // sendController is deliberately left alone: it may not have started yet, and if it
-        // has, a scenario change shouldn't silently resurrect a past selection's send.
+    fun onIntent(intent: PickerIntent) {
+        when (intent) {
+            PickerIntent.RetryItems -> itemsController.retry()
+            PickerIntent.RetrySend -> sendController.retry()
+            PickerIntent.Leave -> _effects.trySend(PickerEffect.NavigateBack)
+            is PickerIntent.SelectItem -> {
+                itemToSend = intent.item
+                _selectedItem.value = intent.item
+                sendController.load()
+            }
+            is PickerIntent.SelectScenario -> {
+                scenarios.select(intent.scenario)
+                itemsController.load()
+                // The send controller is deliberately left alone: it may not have started yet,
+                // and a scenario change must not silently replay a past selection's send.
+            }
+        }
     }
 }

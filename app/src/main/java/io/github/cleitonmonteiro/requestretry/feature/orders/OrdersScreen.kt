@@ -10,11 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
+import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
 fun OrdersRoute(
@@ -23,13 +24,34 @@ fun OrdersRoute(
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
+    CollectEffect(viewModel.effects) { effect ->
+        when (effect) {
+            OrdersEffect.NavigateBack -> onLeave()
+        }
+    }
 
+    OrdersScreen(
+        state = uiState,
+        onIntent = viewModel::onIntent,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun OrdersScreen(
+    state: OrdersUiState,
+    onIntent: (OrdersIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
+        ScenarioSelector(
+            selected = state.scenario,
+            onSelect = { onIntent(OrdersIntent.SelectScenario(it)) },
+        )
         RetryStateScaffold(
-            state = uiState.request,
-            onRetry = viewModel::retry,
-            onLeave = onLeave,
+            state = state.request,
+            onRetry = { onIntent(OrdersIntent.Retry) },
+            onLeave = { onIntent(OrdersIntent.Leave) },
             modifier = Modifier.fillMaxSize(),
         ) { orders -> OrdersList(orders) }
     }

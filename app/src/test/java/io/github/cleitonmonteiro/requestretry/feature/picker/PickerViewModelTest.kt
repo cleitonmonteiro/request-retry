@@ -62,7 +62,7 @@ class PickerViewModelTest {
         val item = (viewModel.state.value.items as RetryUiState.Success).data.first()
 
         // Act
-        viewModel.selectItem(item)
+        viewModel.onIntent(PickerIntent.SelectItem(item))
         advanceUntilIdle()
 
         // Assert: I-1's mocked response carries a DEEPLINK action, per newViewModel's routing
@@ -82,7 +82,7 @@ class PickerViewModelTest {
 
         // Act: selecting an item starts sendController for the first time
         val fakeItem = Item(id = "I-1", name = "Backpack")
-        viewModel.selectItem(fakeItem)
+        viewModel.onIntent(PickerIntent.SelectItem(fakeItem))
         advanceUntilIdle()
 
         // Assert

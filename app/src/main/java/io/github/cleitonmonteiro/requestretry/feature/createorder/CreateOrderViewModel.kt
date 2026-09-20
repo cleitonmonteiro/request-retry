@@ -12,12 +12,16 @@ import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
 import java.util.UUID
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /** Live form state, kept separate from [NewOrderRequest]: [quantity] stays a String so the field can be transiently empty while typing. */
 data class OrderFormInput(
@@ -29,17 +33,32 @@ data class OrderFormInput(
 /** The screen's single, immutable source of truth — see [feature.picker.PickerUiState] for why. */
 data class CreateOrderUiState(
     val input: OrderFormInput,
-    val hasSubmitted: Boolean,
     val result: RetryUiState<Order>,
     val scenario: Scenario,
     val validationError: String?,
 )
 
+sealed interface CreateOrderIntent {
+    data object Submit : CreateOrderIntent
+    data object Retry : CreateOrderIntent
+    data object Leave : CreateOrderIntent
+    data class ChangeItemName(val value: String) : CreateOrderIntent
+    data class ChangeQuantity(val value: String) : CreateOrderIntent
+    data class ChangeCustomerName(val value: String) : CreateOrderIntent
+    data class SelectScenario(val scenario: Scenario) : CreateOrderIntent
+}
+
+sealed interface CreateOrderEffect {
+    data class ShowOrderCreated(val orderId: String) : CreateOrderEffect
+    data object NavigateBack : CreateOrderEffect
+}
+
 /**
  * Demonstrates a request built from multiple form fields, passed through the layers as one data
  * class ([NewOrderRequest]) rather than loose primitives. [lastSubmittedRequest] is captured at
  * submit time and is what the [controller]'s ApiCall reads — never [_formInput] directly — so
- * [retry] resends exactly what was submitted even if the form keeps changing afterward.
+ * [CreateOrderIntent.Retry] resends exactly what was submitted even if the form keeps changing
+ * afterward.
  */
 @HiltViewModel
 class CreateOrderViewModel @Inject constructor(
@@ -51,13 +70,12 @@ class CreateOrderViewModel @Inject constructor(
     private var lastSubmittedRequest = NewOrderRequest(itemName = "", quantity = 1, customerName = "")
 
     private val _formInput = MutableStateFlow(OrderFormInput())
-    private val _hasSubmitted = MutableStateFlow(false)
     private val _validationError = MutableStateFlow<String?>(null)
     private val controller = retryControllers.create(viewModelScope) { createOrder(lastSubmittedRequest) }
+    private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)
 
     val state: StateFlow<CreateOrderUiState> = combine(
         _formInput,
-        _hasSubmitted,
         controller.state,
         scenarios.scenario,
         _validationError,
@@ -67,28 +85,42 @@ class CreateOrderViewModel @Inject constructor(
         started = SharingStarted.Eagerly,
         initialValue = CreateOrderUiState(
             input = _formInput.value,
-            hasSubmitted = _hasSubmitted.value,
             result = controller.state.value,
             scenario = scenarios.scenario.value,
             validationError = _validationError.value,
         ),
     )
+    val effects = _effects.receiveAsFlow()
 
-    fun onItemNameChanged(value: String) {
-        _formInput.update { it.copy(itemName = value) }
-        _validationError.value = null
+    init {
+        viewModelScope.launch {
+            controller.state
+                .filterIsInstance<RetryUiState.Success<Order>>()
+                .collect { _effects.send(CreateOrderEffect.ShowOrderCreated(it.data.id)) }
+        }
     }
 
-    fun onQuantityChanged(value: String) {
-        _formInput.update { it.copy(quantity = value.filter(Char::isDigit)) }
-        _validationError.value = null
+    fun onIntent(intent: CreateOrderIntent) {
+        when (intent) {
+            CreateOrderIntent.Submit -> submit()
+            CreateOrderIntent.Retry -> controller.retry()
+            CreateOrderIntent.Leave -> _effects.trySend(CreateOrderEffect.NavigateBack)
+            is CreateOrderIntent.ChangeItemName -> {
+                _formInput.update { it.copy(itemName = intent.value) }
+                _validationError.value = null
+            }
+            is CreateOrderIntent.ChangeQuantity -> {
+                _formInput.update { it.copy(quantity = intent.value.filter(Char::isDigit)) }
+                _validationError.value = null
+            }
+            is CreateOrderIntent.ChangeCustomerName -> {
+                _formInput.update { it.copy(customerName = intent.value) }
+            }
+            is CreateOrderIntent.SelectScenario -> scenarios.select(intent.scenario)
+        }
     }
 
-    fun onCustomerNameChanged(value: String) {
-        _formInput.update { it.copy(customerName = value) }
-    }
-
-    fun submit() {
+    private fun submit() {
         val input = _formInput.value
         val quantity = input.quantity.toIntOrNull()
         val error = when {
@@ -107,17 +139,6 @@ class CreateOrderViewModel @Inject constructor(
             customerName = input.customerName.trim(),
             idempotencyKey = UUID.randomUUID().toString(),
         )
-        _hasSubmitted.value = true
         controller.load()
-    }
-
-    fun retry() = controller.retry()
-
-    fun setScenario(scenario: Scenario) {
-        scenarios.select(scenario)
-        // Unlike Picker's itemsController (a read-only GET, safe to replay), this screen's only
-        // controller wraps a non-idempotent POST /orders — reloading it here would silently
-        // resend lastSubmittedRequest and create a duplicate order. A scenario change only
-        // affects the *next* submit; it never replays the last one, submitted or not.
     }
 }

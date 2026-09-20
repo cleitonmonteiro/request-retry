@@ -10,17 +10,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
+import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
 fun CreateOrderRoute(
@@ -29,43 +29,56 @@ fun CreateOrderRoute(
     viewModel: CreateOrderViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
-
     val context = LocalContext.current
-    LaunchedEffect(uiState.result) {
-        when (val result = uiState.result) {
-            is RetryUiState.Success -> Toast.makeText(
+    CollectEffect(viewModel.effects) { effect ->
+        when (effect) {
+            is CreateOrderEffect.ShowOrderCreated -> Toast.makeText(
                 context,
-                "Order ${result.data.id} created",
+                "Order ${effect.orderId} created",
                 Toast.LENGTH_SHORT,
             ).show()
-            is RetryUiState.Feedback -> Unit
-            RetryUiState.Idle -> Unit
-            is RetryUiState.Loading -> Unit
+            CreateOrderEffect.NavigateBack -> onLeave()
         }
     }
 
+    CreateOrderScreen(
+        state = uiState,
+        onIntent = viewModel::onIntent,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun CreateOrderScreen(
+    state: CreateOrderUiState,
+    onIntent: (CreateOrderIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
-        val showingFeedback = uiState.result is RetryUiState.Feedback
+        ScenarioSelector(
+            selected = state.scenario,
+            onSelect = { onIntent(CreateOrderIntent.SelectScenario(it)) },
+        )
+        val showingFeedback = state.result is RetryUiState.Feedback
         if (!showingFeedback) OutlinedTextField(
-            value = uiState.input.itemName,
-            onValueChange = viewModel::onItemNameChanged,
+            value = state.input.itemName,
+            onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },
             label = { Text("Item name") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
         if (!showingFeedback) OutlinedTextField(
-            value = uiState.input.quantity,
-            onValueChange = viewModel::onQuantityChanged,
+            value = state.input.quantity,
+            onValueChange = { onIntent(CreateOrderIntent.ChangeQuantity(it)) },
             label = { Text("Quantity") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
         if (!showingFeedback) OutlinedTextField(
-            value = uiState.input.customerName,
-            onValueChange = viewModel::onCustomerNameChanged,
+            value = state.input.customerName,
+            onValueChange = { onIntent(CreateOrderIntent.ChangeCustomerName(it)) },
             label = { Text("Customer name") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
-        val validationError = uiState.validationError
+        val validationError = state.validationError
         if (!showingFeedback && validationError != null) {
             Text(
                 text = validationError,
@@ -73,14 +86,19 @@ fun CreateOrderRoute(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
-        if (!showingFeedback) Button(onClick = viewModel::submit, modifier = Modifier.padding(16.dp)) {
-            Text("Create order")
+        if (!showingFeedback) {
+            Button(
+                onClick = { onIntent(CreateOrderIntent.Submit) },
+                modifier = Modifier.padding(16.dp),
+            ) {
+                Text("Create order")
+            }
         }
-        if (uiState.hasSubmitted) {
+        if (state.result != RetryUiState.Idle) {
             RetryStateScaffold(
-                state = uiState.result,
-                onRetry = viewModel::retry,
-                onLeave = onLeave,
+                state = state.result,
+                onRetry = { onIntent(CreateOrderIntent.Retry) },
+                onLeave = { onIntent(CreateOrderIntent.Leave) },
                 modifier = Modifier.weight(1f),
             ) { order -> CreatedOrder(order) }
         }

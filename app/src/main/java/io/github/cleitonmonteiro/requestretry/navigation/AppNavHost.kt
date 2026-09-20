@@ -1,14 +1,18 @@
 package io.github.cleitonmonteiro.requestretry.navigation
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
 import io.github.cleitonmonteiro.requestretry.feature.createorder.CreateOrderRoute
+import io.github.cleitonmonteiro.requestretry.feature.home.HomeIntent
 import io.github.cleitonmonteiro.requestretry.feature.home.HomeScreen
+import io.github.cleitonmonteiro.requestretry.feature.migration.MigrationDemoActivity
 import io.github.cleitonmonteiro.requestretry.feature.orders.OrdersRoute
 import io.github.cleitonmonteiro.requestretry.feature.picker.PickerRoute
 import io.github.cleitonmonteiro.requestretry.feature.profile.ProfileRoute
@@ -49,6 +53,7 @@ fun AppNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val actionHandler = rememberActionHandler(navController, onClose = { navController.popBackStack() })
 
     CompositionLocalProvider(LocalActionHandler provides actionHandler) {
@@ -59,10 +64,17 @@ fun AppNavHost(
         ) {
             composable(Routes.HOME) {
                 HomeScreen(
-                    onOpenProfile = { navController.navigate(Routes.PROFILE) },
-                    onOpenOrders = { navController.navigate(Routes.ORDERS) },
-                    onOpenPicker = { navController.navigate(Routes.PICKER) },
-                    onOpenCreateOrder = { navController.navigate(Routes.CREATE_ORDER) },
+                    onIntent = { intent ->
+                        when (intent) {
+                            HomeIntent.OpenProfile -> navController.navigate(Routes.PROFILE)
+                            HomeIntent.OpenOrders -> navController.navigate(Routes.ORDERS)
+                            HomeIntent.OpenPicker -> navController.navigate(Routes.PICKER)
+                            HomeIntent.OpenCreateOrder -> navController.navigate(Routes.CREATE_ORDER)
+                            HomeIntent.OpenMigrationDemo -> context.startActivity(
+                                Intent(context, MigrationDemoActivity::class.java),
+                            )
+                        }
+                    },
                 )
             }
             // Each ViewModel is scoped to this NavBackStackEntry via hiltViewModel(), so leaving

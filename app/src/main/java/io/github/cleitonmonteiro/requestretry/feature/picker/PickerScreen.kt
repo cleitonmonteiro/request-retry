@@ -16,7 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
@@ -24,6 +24,7 @@ import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import io.github.cleitonmonteiro.requestretry.ui.action.ActionButton
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
+import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
 fun PickerRoute(
@@ -32,32 +33,65 @@ fun PickerRoute(
     viewModel: PickerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
+    CollectEffect(viewModel.effects) { effect ->
+        when (effect) {
+            PickerEffect.NavigateBack -> onLeave()
+        }
+    }
 
+    PickerScreen(
+        state = uiState,
+        onIntent = viewModel::onIntent,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun PickerScreen(
+    state: PickerUiState,
+    onIntent: (PickerIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
-        val itemBeingSent = uiState.selectedItem
-        val feedback = uiState.items as? RetryUiState.Feedback ?: uiState.send as? RetryUiState.Feedback
+        ScenarioSelector(
+            selected = state.scenario,
+            onSelect = { onIntent(PickerIntent.SelectScenario(it)) },
+        )
+        val itemBeingSent = state.selectedItem
+        val feedback = state.items as? RetryUiState.Feedback ?: state.send as? RetryUiState.Feedback
         if (feedback != null) {
             RetryStateScaffold(
                 state = feedback,
-                onRetry = if (uiState.items is RetryUiState.Feedback) viewModel::retryItems else viewModel::retrySend,
-                onLeave = onLeave,
+                onRetry = {
+                    onIntent(
+                        if (state.items is RetryUiState.Feedback) {
+                            PickerIntent.RetryItems
+                        } else {
+                            PickerIntent.RetrySend
+                        },
+                    )
+                },
+                onLeave = { onIntent(PickerIntent.Leave) },
                 modifier = Modifier.weight(1f),
             ) {}
         } else {
             RetryStateScaffold(
-                state = uiState.items,
-                onRetry = viewModel::retryItems,
-                onLeave = onLeave,
+                state = state.items,
+                onRetry = { onIntent(PickerIntent.RetryItems) },
+                onLeave = { onIntent(PickerIntent.Leave) },
                 modifier = Modifier.weight(1f),
             ) { items ->
-                ItemsList(items = items, selectedItemId = itemBeingSent?.id, onSelect = viewModel::selectItem)
+                ItemsList(
+                    items = items,
+                    selectedItemId = itemBeingSent?.id,
+                    onSelect = { onIntent(PickerIntent.SelectItem(it)) },
+                )
             }
             if (itemBeingSent != null) {
                 RetryStateScaffold(
-                    state = uiState.send,
-                    onRetry = viewModel::retrySend,
-                    onLeave = onLeave,
+                    state = state.send,
+                    onRetry = { onIntent(PickerIntent.RetrySend) },
+                    onLeave = { onIntent(PickerIntent.Leave) },
                     modifier = Modifier.weight(1f),
                 ) { action -> SendConfirmation(item = itemBeingSent, action = action) }
             }

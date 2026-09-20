@@ -8,11 +8,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
+import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
 fun ProfileRoute(
@@ -21,13 +22,34 @@ fun ProfileRoute(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
+    CollectEffect(viewModel.effects) { effect ->
+        when (effect) {
+            ProfileEffect.NavigateBack -> onLeave()
+        }
+    }
 
+    ProfileScreen(
+        state = uiState,
+        onIntent = viewModel::onIntent,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ProfileScreen(
+    state: ProfileUiState,
+    onIntent: (ProfileIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
+        ScenarioSelector(
+            selected = state.scenario,
+            onSelect = { onIntent(ProfileIntent.SelectScenario(it)) },
+        )
         RetryStateScaffold(
-            state = uiState.request,
-            onRetry = viewModel::retry,
-            onLeave = onLeave,
+            state = state.request,
+            onRetry = { onIntent(ProfileIntent.Retry) },
+            onLeave = { onIntent(ProfileIntent.Leave) },
             modifier = Modifier.fillMaxSize(),
         ) { profile -> ProfileCard(profile) }
     }
