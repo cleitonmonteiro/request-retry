@@ -15,12 +15,25 @@ import io.github.cleitonmonteiro.requestretry.feature.profile.ProfileRoute
 import io.github.cleitonmonteiro.requestretry.ui.action.LocalActionHandler
 import io.github.cleitonmonteiro.requestretry.ui.action.rememberActionHandler
 
-private object Routes {
+internal object Routes {
     const val HOME = "home"
     const val PROFILE = "profile"
     const val ORDERS = "orders"
     const val PICKER = "picker"
     const val CREATE_ORDER = "create_order"
+}
+
+/**
+ * Display title for [AppTopBar][io.github.cleitonmonteiro.requestretry.ui.components.AppTopBar],
+ * keyed by [NavHostController.currentBackStackEntry]'s route — kept next to [Routes] so a new
+ * destination can't add one constant without the other.
+ */
+internal fun routeTitle(route: String?): String = when (route) {
+    Routes.PROFILE -> "Profile demo"
+    Routes.ORDERS -> "Orders demo"
+    Routes.PICKER -> "Item picker demo"
+    Routes.CREATE_ORDER -> "Create order demo"
+    else -> "Request Retry"
 }
 
 /**

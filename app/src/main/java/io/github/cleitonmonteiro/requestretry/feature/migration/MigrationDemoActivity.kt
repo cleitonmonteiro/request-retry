@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,6 +19,7 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.ui.action.ActionButton
 import io.github.cleitonmonteiro.requestretry.ui.action.LocalActionHandler
 import io.github.cleitonmonteiro.requestretry.ui.action.rememberActionHandler
+import io.github.cleitonmonteiro.requestretry.ui.components.AppTopBar
 import io.github.cleitonmonteiro.requestretry.ui.theme.RequestRetryTheme
 
 /**
@@ -48,18 +50,25 @@ class MigrationDemoActivity : ComponentActivity() {
 private fun MigrationDemoScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val handler = rememberActionHandler(navController = null, onClose = onClose)
     CompositionLocalProvider(LocalActionHandler provides handler) {
-        Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
-            Text("This screen is hosted from its own Activity, outside AppNavHost's NavHost.")
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Each action below still works — this screen just provides its own ActionHandler.")
-            Spacer(modifier = Modifier.height(24.dp))
-            // Stand-in for a server response; a real screen would get this from a ViewModel,
-            // same as every other feature/ screen.
-            ActionButton(Action.ExternalLink(url = "https://example.com/track/I-2", label = "Track shipment"))
-            Spacer(modifier = Modifier.height(12.dp))
-            ActionButton(Action.Deeplink(uri = "requestretry://orders", label = "View orders (falls back to intent)"))
-            Spacer(modifier = Modifier.height(12.dp))
-            ActionButton(Action.Close(label = "Close"))
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            topBar = {
+                AppTopBar(title = "Legacy migration demo", canNavigateBack = true, onNavigateBack = onClose)
+            },
+        ) { innerPadding ->
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp)) {
+                Text("This screen is hosted from its own Activity, outside AppNavHost's NavHost.")
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Each action below still works — this screen just provides its own ActionHandler.")
+                Spacer(modifier = Modifier.height(24.dp))
+                // Stand-in for a server response; a real screen would get this from a ViewModel,
+                // same as every other feature/ screen.
+                ActionButton(Action.ExternalLink(url = "https://example.com/track/I-2", label = "Track shipment"))
+                Spacer(modifier = Modifier.height(12.dp))
+                ActionButton(Action.Deeplink(uri = "requestretry://orders", label = "View orders (falls back to intent)"))
+                Spacer(modifier = Modifier.height(12.dp))
+                ActionButton(Action.Close(label = "Close"))
+            }
         }
     }
 }
