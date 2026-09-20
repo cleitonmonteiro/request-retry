@@ -27,7 +27,7 @@ val LocalActionHandler = staticCompositionLocalOf<ActionHandler> { ActionHandler
  * threading a callback down for it.
  */
 @Composable
-fun rememberActionHandler(navController: NavController, onClose: () -> Unit): ActionHandler {
+fun rememberActionHandler(navController: NavController?, onClose: () -> Unit): ActionHandler {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     return remember(navController, onClose) {
@@ -47,9 +47,13 @@ fun rememberActionHandler(navController: NavController, onClose: () -> Unit): Ac
  * resolve it against a destination's `navDeepLink` pattern without this handler ever naming a
  * route (`Routes` in `AppNavHost.kt` is private). Falls through to a real intent, then a toast,
  * for a deeplink no destination declares — the same fallback chain a browser would use.
+ *
+ * [navController] is null for a handler built outside AppNavHost's NavHost (see
+ * `feature/migration/MigrationDemoActivity.kt`) — there's no Compose nav graph to resolve
+ * against there, so this skips straight to the intent fallback instead of attempting it.
  */
-private fun handleDeeplink(uri: String, navController: NavController, context: Context) {
-    val navigated = runCatching { navController.navigate(uri.toUri()) }.isSuccess
+private fun handleDeeplink(uri: String, navController: NavController?, context: Context) {
+    val navigated = navController != null && runCatching { navController.navigate(uri.toUri()) }.isSuccess
     if (!navigated) openExternally(uri, context)
 }
 
