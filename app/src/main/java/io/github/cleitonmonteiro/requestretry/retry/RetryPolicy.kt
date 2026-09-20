@@ -24,8 +24,9 @@ class ExponentialBackoffPolicy(
 
     override fun delayFor(attempt: Int): Duration {
         val raw = base * factor.pow(attempt - 1)
-        val capped = raw.coerceAtMost(max)
         val jitter = if (jitterRatio > 0.0) 1.0 + random.nextDouble(-jitterRatio, jitterRatio) else 1.0
-        return (capped * jitter).coerceAtLeast(Duration.ZERO)
+        // Jitter is applied before the cap, not after: jittering an already-capped delay could
+        // push it up to jitterRatio past max, making max not actually a ceiling.
+        return (raw * jitter).coerceIn(Duration.ZERO, max)
     }
 }

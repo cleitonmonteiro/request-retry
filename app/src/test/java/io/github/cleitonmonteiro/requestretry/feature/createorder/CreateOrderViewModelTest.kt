@@ -98,6 +98,29 @@ class CreateOrderViewModelTest {
         }
     }
 
+    @Test
+    fun `changing the scenario after a submit does not resend the order`() = runTest {
+        // Arrange
+        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
+        val capturedBodies = mutableListOf<String>()
+        val viewModel = newViewModel(scenarios, capturedBodies) {
+            """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
+        }
+        viewModel.onItemNameChanged("Backpack")
+        viewModel.submit()
+        advanceUntilIdle()
+        check(viewModel.state.value.result is RetryUiState.Success)
+
+        // Act: tap a scenario chip after the order was already created
+        viewModel.setScenario(Scenario.ALWAYS_FAIL)
+        advanceUntilIdle()
+
+        // Assert: POST /orders is not idempotent — a scenario change must never replay it
+        assertEquals(1, capturedBodies.size)
+        assertEquals(RetryUiState.Success(Order(id = "A-2000", item = "Backpack", total = 59.97)), viewModel.state.value.result)
+        assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
+    }
+
     private fun newViewModel(
         scenarios: ScenarioHolder,
         capturedBodies: MutableList<String>,

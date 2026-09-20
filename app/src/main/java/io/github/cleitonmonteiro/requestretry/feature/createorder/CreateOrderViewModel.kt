@@ -113,7 +113,9 @@ class CreateOrderViewModel @Inject constructor(
 
     fun setScenario(scenario: Scenario) {
         scenarios.select(scenario)
-        // Same rule as Picker: don't resurrect a submit that never happened.
-        if (_hasSubmitted.value) controller.load()
+        // Unlike Picker's itemsController (a read-only GET, safe to replay), this screen's only
+        // controller wraps a non-idempotent POST /orders — reloading it here would silently
+        // resend lastSubmittedRequest and create a duplicate order. A scenario change only
+        // affects the *next* submit; it never replays the last one, submitted or not.
     }
 }

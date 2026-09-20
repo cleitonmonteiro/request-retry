@@ -5,6 +5,7 @@ package io.github.cleitonmonteiro.requestretry.retry
 import app.cash.turbine.test
 import java.io.IOException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -162,6 +163,36 @@ class RetryControllerTest {
         val feedback = controller.state.value as RetryUiState.Feedback
         assertEquals(0, feedback.retriesUsed)
         assertTrue(feedback.canRetry)
+    }
+
+    @Test
+    fun `double-tapping retry only spends one retry, even when the backoff is under a second`() = runTest {
+        // Arrange: a sub-second delay, so awaitBackoff's whole-second countdown loop never runs
+        // and the only thing keeping a second tap from double-spending is state turning to
+        // Loading synchronously, before the caller gets control back.
+        var callCount = 0
+        val api = ApiCall<String> { flow { callCount++; throw IOException("boom") } }
+        val controller = RetryController(
+            scope = this,
+            apiCall = api,
+            retryPolicy = RetryPolicy { 900.milliseconds },
+        )
+        controller.load()
+        advanceUntilIdle()
+        check(callCount == 1)
+
+        // Act: tap Retry twice in a row, as a fast double-tap would
+        controller.retry()
+        val stateRightAfterFirstTap = controller.state.value
+        controller.retry()
+        advanceUntilIdle()
+
+        // Assert: the first tap already moved state off Feedback, so the second tap's guard
+        // (`current !is Feedback`) rejects it — only one retry is spent, one call is made
+        assertTrue(stateRightAfterFirstTap is RetryUiState.Loading)
+        assertEquals(2, callCount)
+        val feedback = controller.state.value as RetryUiState.Feedback
+        assertEquals(1, feedback.retriesUsed)
     }
 
     @Test

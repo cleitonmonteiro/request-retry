@@ -12,6 +12,15 @@ import kotlinx.coroutines.CoroutineScope
 class RetryControllerFactory @Inject constructor(
     private val retryPolicy: RetryPolicy,
 ) {
-    fun <T> create(scope: CoroutineScope, apiCall: ApiCall<T>): RetryController<T> =
-        RetryController(scope = scope, apiCall = apiCall, retryPolicy = retryPolicy)
+    fun <T> create(
+        scope: CoroutineScope,
+        maxRetries: Int = DEFAULT_MAX_RETRIES,
+        apiCall: ApiCall<T>,
+    ): RetryController<T> =
+        RetryController(scope = scope, apiCall = apiCall, retryPolicy = retryPolicy, maxRetries = maxRetries)
+
+    companion object {
+        /** The retry budget every screen gets unless it asks for a different one. */
+        const val DEFAULT_MAX_RETRIES = 3
+    }
 }

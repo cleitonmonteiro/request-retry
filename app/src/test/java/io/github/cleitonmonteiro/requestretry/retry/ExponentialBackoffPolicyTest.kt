@@ -43,6 +43,25 @@ class ExponentialBackoffPolicyTest {
     }
 
     @Test
+    fun `delayFor never exceeds max, even after jitter is applied to an already-capped delay`() {
+        // A high attempt number's raw exponential delay is far past max; jittering it after
+        // capping (the bug) could push the result up to jitterRatio past max instead of at it.
+        repeat(200) { seed ->
+            val policy = ExponentialBackoffPolicy(
+                base = 1.seconds,
+                factor = 2.0,
+                max = 8.seconds,
+                jitterRatio = 0.2,
+                random = Random(seed),
+            )
+
+            val delay = policy.delayFor(attempt = 10)
+
+            assertTrue("delay $delay exceeded max 8s for seed $seed", delay <= 8.seconds)
+        }
+    }
+
+    @Test
     fun `delayFor stays within the jitter bounds and never goes negative`() {
         // Arrange
         val policy = ExponentialBackoffPolicy(

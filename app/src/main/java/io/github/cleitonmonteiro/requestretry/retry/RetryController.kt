@@ -7,10 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -47,6 +47,12 @@ class RetryController<T>(
 
     private fun run(delayBefore: Duration) {
         job?.cancel()
+        // Set synchronously, before the coroutine below is even scheduled: retry()'s in-flight
+        // guard reads _state.value, so a second tap between this call and the coroutine's first
+        // suspension point must already see Loading, not the stale Feedback it's superseding —
+        // otherwise a fast double-tap (or a sub-second backoff, which never enters the countdown
+        // loop below) can slip past the guard and spend two retries on one attempt.
+        _state.value = RetryUiState.Loading(delayBefore.inWholeSeconds.toInt().takeIf { it > 0 })
         job = scope.launch {
             if (delayBefore > Duration.ZERO) awaitBackoff(delayBefore)
             apiCall()
@@ -58,7 +64,11 @@ class RetryController<T>(
                     // quietly instead of being reported as a failed request.
                     emit(
                         RetryUiState.Feedback(
-                            message = error.message ?: "Something went wrong",
+                            // Only IOException (what ApiClient's scenario injection throws) has
+                            // a message meant for a user; anything else — a mapper throwing on
+                            // a malformed response, say — falls back to a generic message rather
+                            // than leaking an internal exception string into the UI.
+                            message = (error as? IOException)?.message ?: "Something went wrong",
                             retriesUsed = retriesUsed,
                             maxRetries = maxRetries,
                             canRetry = retriesUsed < maxRetries,
@@ -69,14 +79,15 @@ class RetryController<T>(
         }
     }
 
-    /** Counts down whole seconds first, then sleeps out whatever fractional part is left. */
+    /** Sleeps out any fractional remainder first, then counts down the whole seconds left,
+     * so the last visible tick ends exactly when [totalDelay] has elapsed instead of lingering. */
     private suspend fun awaitBackoff(totalDelay: Duration) {
         val wholeSeconds = totalDelay.inWholeSeconds.toInt()
+        val fractional = totalDelay - wholeSeconds.seconds
+        if (fractional > Duration.ZERO) delay(fractional)
         for (secondsLeft in wholeSeconds downTo 1) {
             _state.value = RetryUiState.Loading(backoffSecondsRemaining = secondsLeft)
             delay(1.seconds)
         }
-        val fractional = totalDelay - wholeSeconds.seconds
-        if (fractional > Duration.ZERO) delay(fractional)
     }
 }
