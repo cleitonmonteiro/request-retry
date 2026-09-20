@@ -1,7 +1,9 @@
 package io.github.cleitonmonteiro.requestretry.domain.usecase
 
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
+import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
+import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
@@ -53,5 +55,8 @@ class GetOrdersUseCaseTest {
 
         override fun createOrder(request: NewOrderRequest): Flow<Order> =
             error("not used by this test")
+
+        override fun getOperationStatus(operationId: OperationId): Flow<OrderOperationStatus> =
+            flowOf(OrderOperationStatus.Unknown)
     }
 }

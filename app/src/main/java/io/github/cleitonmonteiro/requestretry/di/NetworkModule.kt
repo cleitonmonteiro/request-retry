@@ -1,6 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.di
 
 import android.util.Log
+import io.github.cleitonmonteiro.requestretry.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -8,12 +9,15 @@ import dagger.hilt.components.SingletonComponent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
+import java.util.UUID
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -23,6 +27,17 @@ object NetworkModule {
     @Singleton
     fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
         expectSuccess = true
+        engine {
+            config { retryOnConnectionFailure(false) }
+        }
+        install(HttpTimeout) {
+            connectTimeoutMillis = 5_000
+            socketTimeoutMillis = 8_000
+            requestTimeoutMillis = 10_000
+        }
+        defaultRequest {
+            headers.append("X-Correlation-ID", UUID.randomUUID().toString())
+        }
         install(ContentNegotiation) {
             // coerceInputValues: an unrecognized enum value (e.g. a future ActionTypeDto the
             // server added) decodes to its default instead of throwing — see ActionDto's doc.
@@ -34,7 +49,13 @@ object NetworkModule {
                     Log.d("ApiClient", message)
                 }
             }
-            level = LogLevel.ALL
+            sanitizeHeader { header ->
+                header.equals("Authorization", ignoreCase = true) ||
+                    header.equals("Cookie", ignoreCase = true) ||
+                    header.equals("Set-Cookie", ignoreCase = true) ||
+                    header.equals("Idempotency-Key", ignoreCase = true)
+            }
+            level = if (BuildConfig.DEBUG) LogLevel.HEADERS else LogLevel.NONE
         }
     }
 }

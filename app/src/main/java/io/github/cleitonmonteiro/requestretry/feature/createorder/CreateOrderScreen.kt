@@ -13,12 +13,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.cleitonmonteiro.requestretry.R
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
-import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
+import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
+import io.github.cleitonmonteiro.requestretry.ui.components.OperationStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
@@ -59,7 +62,7 @@ private fun CreateOrderScreen(
             selected = state.scenario,
             onSelect = { onIntent(CreateOrderIntent.SelectScenario(it)) },
         )
-        val showingFeedback = state.result is RetryUiState.Feedback
+        val showingFeedback = state.result is OperationState.Failed || state.result is OperationState.OutcomeUnknown
         if (!showingFeedback) OutlinedTextField(
             value = state.input.itemName,
             onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },
@@ -81,7 +84,12 @@ private fun CreateOrderScreen(
         val validationError = state.validationError
         if (!showingFeedback && validationError != null) {
             Text(
-                text = validationError,
+                text = stringResource(
+                    when (validationError) {
+                        OrderValidationError.ITEM_REQUIRED -> R.string.validation_item_required
+                        OrderValidationError.QUANTITY_MUST_BE_POSITIVE -> R.string.validation_quantity_positive
+                    },
+                ),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -94,11 +102,19 @@ private fun CreateOrderScreen(
                 Text("Create order")
             }
         }
-        if (state.result != RetryUiState.Idle) {
-            RetryStateScaffold(
+        if (state.result != OperationState.Idle) {
+            OperationStateScaffold(
                 state = state.result,
-                onRetry = { onIntent(CreateOrderIntent.Retry) },
-                onLeave = { onIntent(CreateOrderIntent.Leave) },
+                onRecovery = { recovery ->
+                    onIntent(
+                        when (recovery) {
+                            RecoveryAction.Retry -> CreateOrderIntent.Retry
+                            RecoveryAction.EditInput -> CreateOrderIntent.EditInput
+                            is RecoveryAction.VerifyStatus -> CreateOrderIntent.VerifyStatus
+                            else -> CreateOrderIntent.Leave
+                        },
+                    )
+                },
                 modifier = Modifier.weight(1f),
             ) { order -> CreatedOrder(order) }
         }

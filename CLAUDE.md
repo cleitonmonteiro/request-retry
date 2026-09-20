@@ -1,110 +1,156 @@
-# CLAUDE.md
+# RequestRetry repository guidance
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Follow the repository-wide [common engineering rules](COMMON_RULES.md). This file is the
+project-specific source of truth; `AGENTS.md` is a symlink to it.
 
-## Common engineering rules
+## Project and commands
 
-Follow the repository-wide [common engineering rules](COMMON_RULES.md) for architecture, SOLID,
-MVI, Compose, data handling, testing, and code quality. The project-specific instructions below
-take precedence where they are more specific. `AGENTS.md` is a symlink to this file, so agents see
-the same link and project guidance.
+RequestRetry is a Jetpack Compose study app for resilient one-shot HTTP operations. It uses Kotlin,
+Material 3, Navigation Compose, Ktor/OkHttp, kotlinx.serialization, Hilt/KSP, Room, and WorkManager.
+The Android app is one `app` module; `server/` is an independent Node mock.
 
-## Project state
+- Namespace/application ID: `io.github.cleitonmonteiro.requestretry`
+- Min SDK 26; target/compile SDK 37
+- Domain → data → presentation, with a payload-agnostic resilience core
+- No XML layouts
 
-RequestRetry is a study case for the request-retry-with-backoff pattern in Jetpack Compose, built on top of Android Studio's default "Empty Activity" template. Every screen calls a real HTTP endpoint (a small mocked Node server, see `server/`) through Ktor, and demonstrates a Loading/Success/Feedback state machine with manual, budgeted retries — failure is simulated client-side (see `ApiClient` below) since the mocked server always succeeds.
-
-- Package / namespace / application ID: `io.github.cleitonmonteiro.requestretry`
-- Single module: `app`, plus a standalone `server/` Node.js project (no build relationship to the Gradle build — it's just the backend the app's Ktor client talks to)
-- UI toolkit: Jetpack Compose (Material 3) + Navigation Compose, no XML layouts
-- Min SDK 26, target/compile SDK 37
-- Kotlin 2.2.10, AGP 9.4.0-alpha05
-- Networking: Ktor client (OkHttp engine) + kotlinx.serialization content negotiation, talking to the Node mock server over plain HTTP. `AndroidManifest.xml` sets `android:usesCleartextTraffic="true"` and requests `INTERNET` for this reason.
-- DI: Hilt + KSP. `gradle.properties` sets `android.disallowKotlinSourceSets=false` — required because this AGP alpha's built-in-Kotlin support otherwise rejects KSP's use of the classic `kotlin.sourceSets` DSL to register its generated-code directory; remove it if a future KSP/AGP release fixes that upstream.
-
-## Common commands
-
-Run all commands from the repository root using the Gradle wrapper.
+Run from the repository root:
 
 ```bash
-# Build debug APK
-./gradlew assembleDebug
-
-# Full build (compiles, runs checks, assembles all variants)
-./gradlew build
-
-# Run JVM unit tests (app/src/test)
-./gradlew test
-
-# Run a single unit test class or method
-./gradlew testDebugUnitTest --tests "io.github.cleitonmonteiro.requestretry.retry.RetryControllerTest"
-./gradlew testDebugUnitTest --tests "io.github.cleitonmonteiro.requestretry.retry.RetryControllerTest.methodName"
-
-# Run instrumented tests (app/src/androidTest) — requires a connected device/emulator
-./gradlew connectedAndroidTest
-
-# Lint
+./gradlew testDebugUnitTest
 ./gradlew lint
-
-# Install debug build on a connected device/emulator
-./gradlew installDebug
+./gradlew assembleDebug
+./gradlew assembleRelease
+./gradlew connectedAndroidTest  # requires a device/emulator
 ```
 
-Start the mocked backend before running the app on an emulator (the app expects it at `10.0.2.2:8090`, the emulator's alias for the host's loopback interface):
+Start the backend with `cd server && npm start`. The emulator reaches it at
+`http://10.0.2.2:8090`; a physical device needs the host LAN address in `ApiConfig.kt`.
 
-```bash
-cd server && npm start   # or: node index.js
+## Resilience architecture
+
+The current pipeline is:
+
+```text
+Composable → ViewModel → OperationController → RetryExecutor → use case/repository → Ktor
+                              │
+                              └─ Room store / status reconciler / unique WorkManager work
 ```
 
-A physical device can't reach `10.0.2.2` — point `BASE_URL` in `data/remote/ApiConfig.kt` at the host machine's LAN IP instead for that case.
+The removed legacy contracts (`RetryController`, `RetryUiState`, `RetryPolicy`,
+`ErrorTypeStrategy`, `RequestException`, and `ApiCall`) must not be reintroduced. Architecture
+decisions are in `docs/adr/`; the operation matrix is in `docs/operations.md`.
 
-## Architecture notes
+### RetryExecutor
 
-The app is layered domain → data → presentation, on top of a shared, payload-agnostic retry core:
+- Executes a suspending `OneShotCall<Input, Output>` with an immutable input snapshot.
+- Applies validated `OperationSpec` limits: per-attempt timeout, overall monotonic deadline,
+  maximum attempts, full-jitter backoff, and a capped server `Retry-After`.
+- Uses `FailureClassifier` plus `RetryDecider`; unknown behavior is fail-closed.
+- Consults a per-operation-name retry budget, circuit breaker, and shared bulkhead.
+- Reports only controlled, sanitized telemetry fields through `RetryObserver`.
+- Propagates `CancellationException` and `Error`; neither becomes public feedback.
+- Is the only request-retry owner. Ktor request retry is not installed and OkHttp automatic
+  connection retry is disabled.
 
-- `retry/` is the reusable core every demo screen shares, and the reason two features exist at all — it's payload-agnostic (generic in `T`), and knows nothing about domain models or Hilt:
-  - `RetryPolicy` — a `fun interface` for computing the delay before a retry attempt; `ExponentialBackoffPolicy` is the default implementation (doubling delay, capped, with jitter, `Random` injected for testability).
-  - `RetryUiState<T>` — the sealed `Loading` / `Success` / `Feedback` state machine. `Loading.backoffSecondsRemaining` carries the countdown; `Loading.retryAttempt`/`maxRetries` are null for the first attempt (via `load()`) and populated for one triggered by `retry()` — mirroring `Feedback.retriesUsed`/`maxRetries` — so a screen can style a retry's Loading differently from the initial one, which `RetryStateScaffold` does by default. `Feedback.canRetry` goes false once the 3-attempt budget is spent.
-  - `RetryController<T>` — owns the attempt counter, the in-flight `Job`, and a `StateFlow<RetryUiState<T>>`. `load()` resets the budget; `retry()` is a no-op once exhausted. `run()` collects `apiCall()`'s Flow through `.map` (success → `RetryUiState.Success`), `.onStart` (emits `Loading`), and `.catch` (failure → `Feedback`) — `Flow.catch` is transparent to cancellation, so a job superseded by a newer `load()`/`retry()` dies quietly instead of surfacing a spurious `Feedback` (see `RetryControllerTest`'s cancellation test, which pins this down).
-  - `ApiCall<T>` — `operator fun invoke(): Flow<T>`, a **single-shot** Flow (one emission, then completes). Not `suspend`: this is what lets `RetryController` use Flow operators instead of `runCatching`. A ViewModel bridges its use case to this with a one-line adapter (`ApiCall { getProfile() }`), which is the entire seam between domain and `retry/`.
-  - `RetryControllerFactory` — `@Inject`-constructed, holds the app's one injected `RetryPolicy` and hands out controllers (`factory.create(viewModelScope, apiCall)`). This is the only `retry/` type carrying a DI annotation — bare JSR-330 `@Inject`, no Dagger types — so the package otherwise stays framework-free. Exists so backoff tuning has one home (`di/RetryModule.kt`) instead of being a constructor default repeated at every ViewModel.
-- `domain/` has no Android, Compose, or Dagger imports:
-  - `model/` — `UserProfile`, `Order`, `NewOrderRequest` (the create-order form's request, see `feature/createorder/` below).
-  - `repository/` — `ProfileRepository` / `OrdersRepository` interfaces, returning `Flow<T>` (not `suspend fun`).
-  - `usecase/` — `GetProfileUseCase` (pure delegation) and `GetOrdersUseCase` (`.map`s the repository's Flow to sort orders by `total` descending — the one piece of real domain logic in this app, and what its unit test asserts). `GetItemsUseCase`/`SendItemUseCase` are the picker screen's pair, both delegating to `ItemsRepository`. `CreateOrderUseCase` is pure delegation over `OrdersRepository.createOrder(request: NewOrderRequest)`.
-- `data/` implements the domain contracts against a real (if mocked) backend:
-  - `remote/ScenarioHolder` — `@Singleton`, app-wide `StateFlow<Scenario>` (`ALWAYS_SUCCEED` / `ALWAYS_FAIL` / `SUCCEED_ON_THIRD_ATTEMPT`). Because it's shared, picking a scenario on one screen affects every screen — this is intentional, not a bug to fix. It also tracks a `generation` counter, bumped on every `select()` call including a reselection of the same scenario, which is what `ApiClient` watches (not the scenario value) to know when to restart its attempt count — otherwise re-tapping the same scenario chip mid-demo wouldn't reset `SUCCEED_ON_THIRD_ATTEMPT`'s progress.
-  - `remote/ApiClient` — wraps every real Ktor call in `Scenario`-driven failure injection: it always runs the call, then only lets the result through if the current `Scenario` allows it, throwing `IOException` otherwise. This is what keeps the retry/backoff demo meaningful even though the Node server itself never fails on its own. Left **unscoped** on purpose (see below).
-  - `remote/ApiConfig.kt` — `BASE_URL` (`http://10.0.2.2:8090`, the emulator's alias for the host's loopback interface — see Common commands above for the physical-device caveat).
-  - `remote/*Dto.kt` — wire-shaped DTOs: `@Serializable` (kotlinx.serialization) data classes with idiomatic camelCase properties, each annotated `@SerialName("snake_case_key")` to document the wire format without violating Kotlin naming conventions (`OrderDto.totalAmount`/`total_amount` is a `String`, deliberately, to give the mapper something to parse). These are genuinely serialized now: Ktor's `ContentNegotiation` plugin (`di/NetworkModule.kt`) decodes every response body straight into them.
-  - `remote/*RemoteDataSource.kt` — inject the `HttpClient` and `ApiClient`, call the Node server's REST endpoints (`GET /profile`, `GET /orders`, `POST /orders`, `GET /items`, `POST /items/{id}/send`), return DTOs.
-  - `mapper/*Mapper.kt` — `DTO.toDomain()` extension functions, plus one `toDto()`: `NewOrderRequestMapper.kt`'s `NewOrderRequest.toDto()` is the app's first **domain → DTO** mapper, needed because `POST /orders` is the first request that sends a JSON body (every other mutating request is param-free or a bare path segment).
-  - `repository/*RepositoryImpl.kt` — inject a data source, wrap the still-`suspend` fetch in `flow { emit(...) }`, map DTO → domain. Exceptions are never swallowed here; `RetryController`'s `.catch` is what catches them, at **collection** time (not when the use case is called). **Do not add `.flowOn(Dispatchers.IO)` here** — it would move the real request off the test dispatcher in `ApiClientTest`/repository tests, breaking their virtual time (production tests use a `MockEngine`-backed `HttpClient`, so no real socket ever opens anyway).
-- `di/RepositoryModule.kt` — `@Binds` for the three repository interfaces. `di/RetryModule.kt` — `@Provides` the app's single `RetryPolicy` (`ExponentialBackoffPolicy`, `@Singleton`; needed because `RetryPolicy` is a `fun interface` Dagger can't construct on its own). `di/NetworkModule.kt` — `@Provides` the app's single `HttpClient` (`@Singleton`; OkHttp engine + `ContentNegotiation` installed with kotlinx.serialization `Json`). Everything else (use cases, data sources, `ApiClient`, `RetryControllerFactory`, the ViewModels) is plain constructor injection, discovered automatically.
-  - **Scoping matters**: only `ScenarioHolder` and the Ktor `HttpClient` are `@Singleton` — the `HttpClient` because building a new one per request/screen would be wasteful, not because its state needs to be shared. Every other binding in the chain, including `ApiClient`, is unscoped, so each `@HiltViewModel` gets its own fresh `ApiClient` (and therefore its own attempt counter for `SUCCEED_ON_THIRD_ATTEMPT`) even though they all share one `HttpClient`. The retry budget itself (`RetryController.retriesUsed`) is per-ViewModel and unaffected either way — what a `@Singleton` `ApiClient` would actually break is its attempt counter outliving the screen, so a re-entered `SUCCEED_ON_THIRD_ATTEMPT` demo would succeed immediately instead of failing twice first.
-- `ui/components/RetryStateScaffold.kt` is the UI half of the retry-core reuse: it renders Loading and Feedback itself and only delegates the Success branch to the caller, so a feature screen's own composable is just the success-case layout plus wiring.
-- **Strict MVI, single state of truth per screen**: every `@HiltViewModel` exposes exactly one `state: StateFlow<XxxUiState>` — never multiple sibling `StateFlow`s (e.g. one for the request, one for the scenario). Internally a ViewModel may still own several independent `RetryController`s and small `MutableStateFlow`s (selection, etc.); those are combined with `kotlinx.coroutines.flow.combine(...).stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = ...)` into one immutable `XxxUiState` data class, which is the only thing the Composable ever collects. `SharingStarted.Eagerly` (not `WhileSubscribed`) is deliberate: the combine coroutine starts as soon as the ViewModel is constructed, so `state.value` is always live and correct even before any UI subscribes to it (tests rely on this, reading `.value` directly after `advanceUntilIdle()`). The `initialValue` is built from each source flow's own `.value` at construction time so there's no gap before the first `combine` emission.
-- Each ViewModel-backed feature exposes a sealed `XxxIntent` handled through one `ViewModel.onIntent(...)` entry point. A route composable is the only layer that knows the ViewModel: it collects `state` and lifecycle-aware one-off `XxxEffect`s, then passes immutable state plus one intent lambda to a stateless screen composable. Navigation and toasts are effects rather than values inferred from durable state, preventing them from replaying after recomposition or configuration changes. `ui/mvi/CollectEffect.kt` centralizes effect collection while the route lifecycle is at least `STARTED`. The stateless home screen has no state or ViewModel, but follows the same single-intent-lambda shape and leaves navigation/activity effects to `AppNavHost`.
-- `feature/profile/` and `feature/orders/` are two independent screens over different payloads (`UserProfile`, `List<Order>`) — each a `@HiltViewModel` (injecting a use case, `ScenarioHolder`, and `RetryControllerFactory`) wired to `RetryStateScaffold` via `hiltViewModel()`. A ViewModel builds its controller via `retryControllers.create(viewModelScope, ApiCall { getProfile() })` — it never constructs `RetryController` directly, since only the factory carries the injected `RetryPolicy`. Each exposes `ProfileUiState(request, scenario)` / `OrdersUiState(request, scenario)` as its single `state`. They're intentionally near-identical; that similarity is what demonstrates the retry core (and now the layering) is actually shared. `feature/home/` is the launcher screen.
-- **A reusable SDUI `Action`** (`domain/model/Action.kt`, `data/remote/ActionDto.kt`, `data/mapper/ActionMapper.kt`, `ui/action/`): the send-item response carries a server-driven "next action" — `Action` is a **sealed interface** (`Deeplink(uri, label)` / `ExternalLink(url, label)` / `Close(label)` / `Unknown`), not an enum-plus-nullable-field, so each case carries exactly the payload it needs and `label` is always the server's button text (a generic renderer never hardcodes copy per type). The wire→domain mapping pattern, in order: (1) a **DTO-side enum** (`ActionTypeDto`) whose constants match the wire's actual spelling via per-entry `@SerialName`; (2) an explicit, **exhaustive `when` with no `else`** in the mapper translating DTO → domain, so a new wire case is a compile error everywhere it isn't handled; (3) `ActionTypeDto.UNKNOWN` is the deliberate exception — it degrades gracefully to `Action.Unknown` (via `Json { coerceInputValues = true }` in `NetworkModule`/`MockHttpClients`) instead of throwing, because a shipped client can't be updated retroactively when the server adds a new action type. A **known** type with a missing required field (e.g. a deeplink with no target) still throws — that's a server bug, not a forward-compat gap, and surfaces through `RetryController`'s `.catch` as a retryable `Feedback`.
-  - `ui/action/ActionHandler.kt` + `ActionButton.kt` are what make an `Action` reusable across components: `LocalActionHandler` (a `CompositionLocal` — the first in this codebase) is provided once, above `AppNavHost`'s `NavHost`, by `rememberActionHandler(navController, onClose)`; `ActionButton(action)` reads it and renders any action as one button with zero knowledge of what the action does — no `Intent`/`LocalContext`/`when`/threaded callback in the calling composable. The handler is the one place the `when (action)` lives: `Deeplink` tries `navController.navigate(uri.toUri())` first (resolved against each destination's `navDeepLink` pattern, so the handler never needs to name a route — `Routes` in `AppNavHost.kt` is private), falling back to a real `Intent.ACTION_VIEW` and then a toast; `ExternalLink` goes through `LocalUriHandler`; `Close` calls `onClose()`; `Unknown` is a no-op (and `ActionButton` skips rendering it entirely).
-  - `rememberActionHandler`'s `navController` parameter is nullable for a reason: `feature/migration/MigrationDemoActivity.kt` is a standalone `ComponentActivity` (its own `setContent`, not a destination inside `AppNavHost`'s `NavHost`) standing in for a screen reached from a legacy, non-Compose part of the app during an incremental migration. A `CompositionLocal` only reaches its own composition subtree, so that screen can't rely on `AppNavHost`'s provider — it builds and provides its own `ActionHandler` at its own root instead (`rememberActionHandler(navController = null, onClose = ...)` + a local `CompositionLocalProvider`). With no `NavController`, `Deeplink` skips the in-app-navigation attempt entirely and goes straight to the `Intent.ACTION_VIEW` fallback, which is the correct behavior there, not a degraded one. `HomeScreen` emits `HomeIntent.OpenMigrationDemo`, which `AppNavHost` handles with a plain `context.startActivity(...)`, deliberately not `navController.navigate(...)`, since the activity isn't part of the Compose nav graph.
-- **A request built from a multi-field form** (`feature/createorder/`): `CreateOrderViewModel` demonstrates how `ApiCall`'s dynamic params should work once a request depends on user input rather than being fixed. The form's live input is its own data class, `OrderFormInput` (`quantity` stays a `String` so the field can be transiently empty while typing); `submit()` is where that gets parsed/validated into the typed `NewOrderRequest` domain model. **The rule that makes retry correct:** the submitted request is captured into a private var (`lastSubmittedRequest`) *at submit time*, and the `ApiCall` closure passed to `retryControllers.create(...)` reads that var — never the live `_formInput` `StateFlow` directly. `CreateOrderIntent.Retry` only re-runs the controller; it never touches the form, so if the closure read live input, retrying a failed submit could silently resend whatever the user has typed *since*, not what actually failed. This generalizes the same trick `feature/picker/PickerViewModel.kt`'s `sendController` already uses for a single captured var (`itemToSend`) to a full multi-field request object. `CreateOrderScreen` renders the `RetryStateScaffold` whenever `result` is not `RetryUiState.Idle`, so the retry state itself is the source of truth and a parallel `hasSubmitted` boolean cannot drift out of sync.
-- `feature/picker/` demonstrates **one ViewModel owning two independent `RetryController`s, still folded into one `PickerUiState`** — the pattern to reach for whenever a screen has more than one request: give each request its own controller (so it can load/fail/retry independently), but combine every controller's `state` (plus any other UI-relevant flow) into a single `PickerUiState(items, send, selectedItem, scenario)` rather than exposing them as separate `StateFlow`s. `PickerViewModel` has `itemsController` (loads on `init`, like every other screen) and `sendController` (built up front but its `load()` isn't called until `PickerIntent.SelectItem` arrives — the controller stays in `RetryUiState.Idle` until then, and `PickerScreen` only composes its scaffold after an item is selected). Because `GetItemsUseCase` and `SendItemUseCase` each resolve `ItemsRepository` independently and `ApiClient` is unscoped (unlike the shared `HttpClient`), the two requests get separate `ApiClient` instances (and separate `SUCCEED_ON_THIRD_ATTEMPT` counters) automatically — the same mechanism, applied within a single ViewModel instead of across two. `PickerIntent.SelectScenario` deliberately reloads only `itemsController`; changing the scenario should not silently resurrect or restart a past selection's send.
-- `navigation/AppNavHost.kt` wires `home` → `profile` / `orders` / `picker` / `create_order` with Navigation Compose. Each destination's ViewModel is scoped to its `NavBackStackEntry` via `hiltViewModel()`, so popping back and re-entering a demo always starts with a fresh retry budget. Each non-home destination also declares a `navDeepLink { uriPattern = "requestretry://<route>" }`, which is what lets `ui/action/ActionHandler.kt` route an `Action.Deeplink` in-app; the `requestretry://` scheme isn't registered in `AndroidManifest.xml`, so it only resolves *inside* the app right now (a link tapped outside it would still fall through to `Intent.ACTION_VIEW`/an external app, per the handler's fallback chain) — adding the manifest `intent-filter` would be the next step to accept it from outside too.
-- `RequestRetryApplication` (`@HiltAndroidApp`) and `MainActivity` (`@AndroidEntryPoint`) are the two Hilt entry points; there's no other Application subclass logic.
-- Dependency versions are centralized in `gradle/libs.versions.toml` (Gradle version catalog) and referenced from `app/build.gradle.kts` via `libs.*` aliases — add new dependencies there rather than hardcoding coordinates in the module build file.
-- `release` build type currently has optimization (minify/shrink) disabled in `app/build.gradle.kts`.
+### OperationController
 
-## Testing patterns already established
+- Owns one `StateFlow<OperationState<T>>` and serializes commands/events through a mailbox.
+- Public commands are `start(input)`, `retry()`, `verifyStatus()`, `cancelObservation()`, and
+  `reset()` where semantically allowed.
+- Applies `CancelPrevious`, `DropWhileRunning`, `JoinExisting`, bounded `Queue`, or `Reject`.
+- Stores the submitted input in the session. Never read mutable form/selection state from a retry.
+- Uses a session token so obsolete results cannot alter the current state.
+- Models `Running`, `BackingOff`, `Succeeded`, `Failed`, and `OutcomeUnknown` explicitly.
+- Never treats local cancellation as remote rollback.
 
-- JVM unit tests only (`app/src/test`), plain JUnit4 assertions — no mocking library or assertion library beyond JUnit is a dependency; write fakes (hand-rolled `ProfileRepository`/`OrdersRepository` implementations, or the real `ApiClient` + `ScenarioHolder` pair, with a `mockHttpClient { path -> ... }`-built `HttpClient` from `data/remote/MockHttpClients.kt` standing in for the real one) instead of mocks. No Hilt graph is ever started in tests — everything is constructed directly. `mockHttpClient` pins its `MockEngine`'s dispatcher to `Dispatchers.Unconfined` so responses resolve within `runTest`'s virtual time instead of hopping onto a real thread pool `advanceUntilIdle()` can't see through.
-- `MainDispatcherRule` (`app/src/test/.../MainDispatcherRule.kt`) points `Dispatchers.Main` at a `StandardTestDispatcher` for any test touching a `ViewModel`'s `viewModelScope`; not needed when a `RetryController` is constructed directly with `scope = this` inside `runTest`.
-- Backoff delays are real `delay()` calls under a `StandardTestDispatcher`, so tests use `advanceUntilIdle()` (or Turbine's `test { }` on `RetryController.state`, per `RetryControllerTest`) to fast-forward through them deterministically rather than waiting in real time.
-- `ApiCall`/repository/use-case fakes return `flowOf(value)` for success and `flow { throw ... }` for failure (never a plain `throw` outside a flow builder — collection is what triggers it), and callers assert with `.first()` rather than calling the function directly.
-- `RetryControllerTest`'s cancellation test is the regression guard for `RetryController`'s `.catch` transparency: it starts a `load()` whose Flow never resolves, supersedes it with another `load()`, and asserts via Turbine that only the second call's result is ever observed — no `Feedback` from the first. If you touch `run()`'s Flow pipeline, re-run this test specifically.
-- `ProfileViewModelTest` builds its `RetryControllerFactory` with a zero-delay `RetryPolicy { Duration.ZERO }`, not the jittered production `ExponentialBackoffPolicy` — this determinism is the actual payoff of `RetryController` going through an injected factory instead of a hardcoded default.
-- Every ViewModel test asserts through the single combined `viewModel.state.value.<field>` (e.g. `.request`, `.items`, `.send`, `.scenario`) — never against an intermediate controller's flow directly — since that combined `XxxUiState` is the ViewModel's only public contract.
-- Repository/use-case tests fake at the narrowest seam that gives a deterministic result: `GetOrdersUseCaseTest` fakes `OrdersRepository` directly; `ProfileRepositoryImplTest` and `ProfileViewModelTest` instead wire a real `ApiClient`/`ScenarioHolder` pair against a `mockHttpClient`. `ApiClientTest` (renamed from `FakeNetworkTest`) is where `Scenario` behavior and the `generation`-based attempt-count reset are actually asserted — don't re-test that indirectly through a ViewModel.
-- `PickerViewModelTest` wires its real repository chain **twice** (once per use case) — sharing one `mockHttpClient`-built `HttpClient` but constructing a separate `ApiClient` for each — which mirrors what Hilt actually builds (see `feature/picker/` above, and the scoping note under `di/`) and is what makes its independence test honest.
-- `CreateOrderViewModelTest` builds its own `MockEngine`-backed `HttpClient` directly rather than using `mockHttpClient` (which only sees the request path), because its key test — `retry` resending the originally submitted request instead of the since-edited form — needs to inspect each request's **body**. Its handler records every `request.body.toByteArray().decodeToString()` (the `toByteArray()` extension is from `io.ktor.client.engine.mock`) into a list, and the test decodes each captured body back into `NewOrderRequestDto` to assert on its fields.
-- `ActionMapperTest` is where every `ActionDto` → `Action` case is asserted, including the two failure modes: an unrecognized `action_type` degrades to `Action.Unknown` (never throws), while a known type missing a required field (e.g. `DEEPLINK` with no `target`) does throw. `ui/action/ActionHandler.kt` itself is **not** unit-tested — it's Android-coupled (`Intent`/`NavController`/`Toast`) and this project is JVM-tests-only; keeping it as pure dispatch with all the branching logic already covered by `ActionMapperTest` is what makes that an acceptable line to draw.
+### Failures and UI
+
+- `data/remote/TransportFailureMapper.kt` converts transport/Ktor/HTTP failures to stable
+  `RequestFailure`; the wrapper may retain a cause for diagnostics only.
+- `ConservativeRetryDecider` combines a typed failure with operation safety. 4xx statuses are
+  terminal by default; only 408, 425, and 429 are transient by explicit rule. Unknown/protocol/TLS
+  failures do not retry.
+- Presentation receives only `PublicFailure` and sealed `RecoveryAction`. All retry/error copy is
+  in Android string resources and no exception message is rendered.
+- `OperationStateScaffold` renders common operation states. Feature screens provide success
+  content and map recovery actions to their single intent entry point.
+
+### Profiles
+
+- Profile, Orders GET, and Picker items are foreground reads: at most three total attempts,
+  bounded full jitter, and `CancelPrevious`.
+- Picker send is currently an unsafe command: one attempt, `DropWhileRunning`, no generic retry.
+- Create Order is an idempotent command: mandatory stable `OperationId` and `IdempotencyKey`,
+  `DropWhileRunning`, persistence, automatic retries only when safe, and status verification for
+  ambiguous completion.
+- Polling and background sync need separate components; do not force them through one-shot calls.
+
+## Durable Create Order
+
+`NewOrderRequest` requires non-empty typed operation/idempotency identity. `CreateOrderUseCase`
+inserts operation identity plus a one-way payload fingerprint in Room before network I/O and marks
+each send. Form/customer fields are not persisted. The Room store uses guarded
+updates so terminal states do not become active again. A failure after sending becomes pending
+confirmation rather than an instruction to create a new order.
+
+`GET /operations/{operationId}` returns `PROCESSING`, `SUCCEEDED`, `REJECTED`, or `UNKNOWN`.
+`VerifyOrderOperationUseCase` updates Room from that authority. `OutcomeUnknown` schedules one
+network-constrained WorkManager job named from the non-sensitive operation UUID with
+`ExistingWorkPolicy.KEEP`; the worker only queries status and never generates a key or repeats the
+mutation. WorkManager backoff is the sole backoff around worker reruns.
+
+The mock persists idempotency records in `server/.operations.json`, reserves identity before the
+effect, validates a payload fingerprint, returns the original result for an identical replay, and
+returns 409 for the same key with different input. Production needs an atomic durable store,
+approved retention, encryption, tenant isolation, and logout rules.
+
+## Data and dependency injection
+
+- Domain contains models, repository/store contracts, and use cases only; no Android, Compose,
+  Ktor, Hilt, Room, or DTO imports.
+- DTOs remain wire-shaped and use explicit mappers. Repositories expose cold `Flow` values and do
+  not add `flowOn`, swallow failures, or retry.
+- `ScenarioHolder` and `HttpClient` are singletons. `ApiClient` stays unscoped so independent
+  ViewModels/requests do not share simulated attempt counters.
+- Resilience strategies and guards are bound in `RetryModule`; Room in `DatabaseModule`; repository,
+  operation-store, and scheduler interfaces in `RepositoryModule`.
+- Add versions in `gradle/libs.versions.toml`, never inline dependency coordinates.
+
+## Network and security
+
+- Ktor has explicit connect/socket/request timeouts. The executor still owns the overall deadline.
+- Correlation IDs are generated per HTTP request. Response request ID, backend code, status, and
+  capped `Retry-After` are captured when present.
+- Release logging is `NONE`. Debug logging is headers-only and redacts authorization, cookies, and
+  idempotency keys; bodies are never logged.
+- Release blocks cleartext through both manifest and Network Security Config. Debug permits
+  cleartext only for emulator host `10.0.2.2`.
+- `AuthRefreshCoordinator` provides generation-aware single-flight refresh. When authentication is
+  wired to a real backend, allow at most one refresh per logical request and keep it outside the
+  business retry budget.
+
+## MVI and feature rules
+
+- Every ViewModel exposes exactly one immutable `StateFlow<XxxUiState>`, built with eager `combine`
+  where multiple internal flows exist. Tests read only this public state.
+- Every ViewModel-backed feature exposes one sealed intent API and lifecycle-aware effects.
+- Route composables alone know the ViewModel. Stateless screens receive immutable state and one
+  intent lambda.
+- Scenario changes reload disposable reads only. They must never silently replay a mutation.
+- Create Order form edits after submit cannot change the submitted session.
+- Picker intentionally owns separate item-read and send controllers, combined into one UI state.
+
+## Tests
+
+- JVM tests use JUnit4, coroutine virtual time, Turbine where helpful, hand-written fakes, and Ktor
+  `MockEngine`; no mocking library or Hilt graph.
+- Use `MainDispatcherRule` for ViewModels. Direct controllers in `runTest` should use
+  `backgroundScope` so the mailbox lifecycle is cancelled automatically.
+- Cover the typed failure matrix, full jitter bounds, deadline/timeout, cancellation, stale results,
+  concurrent starts, retry budget, circuit breaker, stable request identity, unknown outcome, and
+  reconciliation.
+- `mockHttpClient` keeps its engine on `Dispatchers.Unconfined`; do not add repository dispatcher
+  switches that break virtual time.
+- Run unit tests, lint, and the relevant build variants before handoff. Instrumented Room/process
+  death tests require an emulator/device.

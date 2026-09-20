@@ -20,9 +20,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
+import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
 import io.github.cleitonmonteiro.requestretry.ui.action.ActionButton
-import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
+import io.github.cleitonmonteiro.requestretry.ui.components.OperationStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
@@ -58,27 +59,29 @@ private fun PickerScreen(
             onSelect = { onIntent(PickerIntent.SelectScenario(it)) },
         )
         val itemBeingSent = state.selectedItem
-        val feedback = state.items as? RetryUiState.Feedback ?: state.send as? RetryUiState.Feedback
+        val feedback = state.items as? OperationState.Failed ?: state.send as? OperationState.Failed
         if (feedback != null) {
-            RetryStateScaffold(
+            OperationStateScaffold(
                 state = feedback,
-                onRetry = {
-                    onIntent(
-                        if (state.items is RetryUiState.Feedback) {
+                onRecovery = { recovery ->
+                    if (recovery == RecoveryAction.Retry) {
+                        onIntent(if (state.items is OperationState.Failed) {
                             PickerIntent.RetryItems
                         } else {
                             PickerIntent.RetrySend
-                        },
-                    )
+                        })
+                    } else {
+                        onIntent(PickerIntent.Leave)
+                    }
                 },
-                onLeave = { onIntent(PickerIntent.Leave) },
                 modifier = Modifier.weight(1f),
             ) {}
         } else {
-            RetryStateScaffold(
+            OperationStateScaffold(
                 state = state.items,
-                onRetry = { onIntent(PickerIntent.RetryItems) },
-                onLeave = { onIntent(PickerIntent.Leave) },
+                onRecovery = { recovery ->
+                    onIntent(if (recovery == RecoveryAction.Retry) PickerIntent.RetryItems else PickerIntent.Leave)
+                },
                 modifier = Modifier.weight(1f),
             ) { items ->
                 ItemsList(
@@ -88,10 +91,11 @@ private fun PickerScreen(
                 )
             }
             if (itemBeingSent != null) {
-                RetryStateScaffold(
+                OperationStateScaffold(
                     state = state.send,
-                    onRetry = { onIntent(PickerIntent.RetrySend) },
-                    onLeave = { onIntent(PickerIntent.Leave) },
+                    onRecovery = { recovery ->
+                        onIntent(if (recovery == RecoveryAction.Retry) PickerIntent.RetrySend else PickerIntent.Leave)
+                    },
                     modifier = Modifier.weight(1f),
                 ) { action -> SendConfirmation(item = itemBeingSent, action = action) }
             }

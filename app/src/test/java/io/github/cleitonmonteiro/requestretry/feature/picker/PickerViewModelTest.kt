@@ -13,10 +13,8 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryPolicy
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
-import kotlin.time.Duration
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -49,7 +47,7 @@ class PickerViewModelTest {
         advanceUntilIdle()
 
         // Assert
-        val items = (viewModel.state.value.items as RetryUiState.Success).data
+        val items = (viewModel.state.value.items as OperationState.Succeeded).data
         assertEquals(listOf("Backpack", "Water bottle", "Notebook"), items.map { it.name })
     }
 
@@ -59,7 +57,7 @@ class PickerViewModelTest {
         val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
         val viewModel = newViewModel(scenarios)
         advanceUntilIdle()
-        val item = (viewModel.state.value.items as RetryUiState.Success).data.first()
+        val item = (viewModel.state.value.items as OperationState.Succeeded).data.first()
 
         // Act
         viewModel.onIntent(PickerIntent.SelectItem(item))
@@ -67,7 +65,7 @@ class PickerViewModelTest {
 
         // Assert: I-1's mocked response carries a DEEPLINK action, per newViewModel's routing
         val expected = Action.Deeplink(uri = "requestretry://orders", label = "View orders")
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value.send)
+        assertEquals(expected, (viewModel.state.value.send as OperationState.Succeeded).data)
     }
 
     @Test
@@ -77,7 +75,7 @@ class PickerViewModelTest {
         val viewModel = newViewModel(scenarios)
         advanceUntilIdle()
         val itemsFeedbackBeforeSend = viewModel.state.value.items
-        check(itemsFeedbackBeforeSend is RetryUiState.Feedback)
+        check(itemsFeedbackBeforeSend is OperationState.Failed)
         scenarios.select(Scenario.ALWAYS_SUCCEED)
 
         // Act: selecting an item starts sendController for the first time
@@ -87,9 +85,9 @@ class PickerViewModelTest {
 
         // Assert
         val expected = Action.Deeplink(uri = "requestretry://orders", label = "View orders")
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value.send)
+        assertEquals(expected, (viewModel.state.value.send as OperationState.Succeeded).data)
         assertEquals(itemsFeedbackBeforeSend, viewModel.state.value.items)
-        assertTrue(viewModel.state.value.items is RetryUiState.Feedback)
+        assertTrue(viewModel.state.value.items is OperationState.Failed)
     }
 
     private fun newViewModel(scenarios: ScenarioHolder): PickerViewModel {
@@ -108,7 +106,6 @@ class PickerViewModelTest {
         }
         val getItems = GetItemsUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(httpClient, ApiClient(scenarios))))
         val sendItem = SendItemUseCase(ItemsRepositoryImpl(ItemsRemoteDataSource(httpClient, ApiClient(scenarios))))
-        val retryControllers = RetryControllerFactory(RetryPolicy { Duration.ZERO })
-        return PickerViewModel(getItems, sendItem, scenarios, retryControllers)
+        return PickerViewModel(getItems, sendItem, scenarios, OperationControllerFactory())
     }
 }

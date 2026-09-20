@@ -7,19 +7,23 @@ import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetOrdersUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.stateIn
 
 /** The screen's single, immutable source of truth — see [feature.picker.PickerUiState] for why. */
 data class OrdersUiState(
-    val request: RetryUiState<List<Order>>,
+    val request: OperationState<List<Order>>,
     val scenario: Scenario,
 )
 
@@ -35,17 +39,19 @@ sealed interface OrdersEffect {
 
 /**
  * Same shape as [io.github.cleitonmonteiro.requestretry.feature.profile.ProfileViewModel],
- * over a different payload — that's the point: [io.github.cleitonmonteiro.requestretry.retry.RetryController]
- * is what's reused, not this class.
+ * over a different payload — the payload-agnostic operation pipeline is reused, not this class.
  */
 @HiltViewModel
 class OrdersViewModel @Inject constructor(
     private val getOrders: GetOrdersUseCase,
     private val scenarios: ScenarioHolder,
-    retryControllers: RetryControllerFactory,
+    operationControllers: OperationControllerFactory,
 ) : ViewModel() {
 
-    private val controller = retryControllers.create(viewModelScope) { getOrders() }
+    private val controller = operationControllers.create(
+        scope = viewModelScope,
+        specFactory = OperationSpecFactory<Unit> { OperationProfiles.foregroundRead(OperationName.ORDERS_READ) },
+    ) { _, _ -> getOrders().single() }
     private val _effects = Channel<OrdersEffect>(Channel.BUFFERED)
 
     val state: StateFlow<OrdersUiState> = combine(
@@ -60,7 +66,7 @@ class OrdersViewModel @Inject constructor(
     val effects = _effects.receiveAsFlow()
 
     init {
-        controller.load()
+        controller.start(Unit)
     }
 
     fun onIntent(intent: OrdersIntent) {
@@ -69,7 +75,7 @@ class OrdersViewModel @Inject constructor(
             OrdersIntent.Leave -> _effects.trySend(OrdersEffect.NavigateBack)
             is OrdersIntent.SelectScenario -> {
                 scenarios.select(intent.scenario)
-                controller.load()
+                controller.start(Unit)
             }
         }
     }

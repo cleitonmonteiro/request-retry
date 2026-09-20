@@ -8,10 +8,21 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import io.github.cleitonmonteiro.requestretry.domain.usecase.ScheduleOrderReconciliationUseCase
+import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
+import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
+import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
+import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
+import io.github.cleitonmonteiro.requestretry.retry.PublicFailure
+import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
+import io.github.cleitonmonteiro.requestretry.retry.StatusVerifier
+import io.github.cleitonmonteiro.requestretry.retry.VerificationResult
 import javax.inject.Inject
-import java.util.UUID
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -33,14 +45,18 @@ data class OrderFormInput(
 /** The screen's single, immutable source of truth — see [feature.picker.PickerUiState] for why. */
 data class CreateOrderUiState(
     val input: OrderFormInput,
-    val result: RetryUiState<Order>,
+    val result: OperationState<Order>,
     val scenario: Scenario,
-    val validationError: String?,
+    val validationError: OrderValidationError?,
 )
+
+enum class OrderValidationError { ITEM_REQUIRED, QUANTITY_MUST_BE_POSITIVE }
 
 sealed interface CreateOrderIntent {
     data object Submit : CreateOrderIntent
     data object Retry : CreateOrderIntent
+    data object VerifyStatus : CreateOrderIntent
+    data object EditInput : CreateOrderIntent
     data object Leave : CreateOrderIntent
     data class ChangeItemName(val value: String) : CreateOrderIntent
     data class ChangeQuantity(val value: String) : CreateOrderIntent
@@ -63,15 +79,34 @@ sealed interface CreateOrderEffect {
 @HiltViewModel
 class CreateOrderViewModel @Inject constructor(
     private val createOrder: CreateOrderUseCase,
+    verifyOrder: VerifyOrderOperationUseCase,
+    private val scheduleReconciliation: ScheduleOrderReconciliationUseCase,
     private val scenarios: ScenarioHolder,
-    retryControllers: RetryControllerFactory,
+    operationControllers: OperationControllerFactory,
 ) : ViewModel() {
-
-    private var lastSubmittedRequest = NewOrderRequest(itemName = "", quantity = 1, customerName = "")
-
     private val _formInput = MutableStateFlow(OrderFormInput())
-    private val _validationError = MutableStateFlow<String?>(null)
-    private val controller = retryControllers.create(viewModelScope) { createOrder(lastSubmittedRequest) }
+    private val _validationError = MutableStateFlow<OrderValidationError?>(null)
+    private val controller = operationControllers.create(
+        scope = viewModelScope,
+        specFactory = OperationSpecFactory<NewOrderRequest> { request ->
+            OperationProfiles.foregroundIdempotentCommand(
+                name = OperationName.CREATE_ORDER,
+                operationId = request.operationId,
+                idempotencyKey = request.idempotencyKey,
+            )
+        },
+        verifier = StatusVerifier { request ->
+            when (val status = verifyOrder(request.operationId)) {
+                OrderOperationStatus.Processing -> VerificationResult.StillProcessing
+                is OrderOperationStatus.Succeeded -> VerificationResult.Confirmed(status.order)
+                is OrderOperationStatus.Rejected -> VerificationResult.Rejected(
+                    PublicFailure.Validation,
+                    RecoveryAction.EditInput,
+                )
+                OrderOperationStatus.Unknown -> VerificationResult.Unknown
+            }
+        },
+    ) { request, _ -> createOrder(request).single() }
     private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)
 
     val state: StateFlow<CreateOrderUiState> = combine(
@@ -95,8 +130,13 @@ class CreateOrderViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             controller.state
-                .filterIsInstance<RetryUiState.Success<Order>>()
+                .filterIsInstance<OperationState.Succeeded<Order>>()
                 .collect { _effects.send(CreateOrderEffect.ShowOrderCreated(it.data.id)) }
+        }
+        viewModelScope.launch {
+            controller.state
+                .filterIsInstance<OperationState.OutcomeUnknown>()
+                .collect { scheduleReconciliation(it.operationId) }
         }
     }
 
@@ -104,6 +144,8 @@ class CreateOrderViewModel @Inject constructor(
         when (intent) {
             CreateOrderIntent.Submit -> submit()
             CreateOrderIntent.Retry -> controller.retry()
+            CreateOrderIntent.VerifyStatus -> controller.verifyStatus()
+            CreateOrderIntent.EditInput -> controller.reset()
             CreateOrderIntent.Leave -> _effects.trySend(CreateOrderEffect.NavigateBack)
             is CreateOrderIntent.ChangeItemName -> {
                 _formInput.update { it.copy(itemName = intent.value) }
@@ -124,8 +166,8 @@ class CreateOrderViewModel @Inject constructor(
         val input = _formInput.value
         val quantity = input.quantity.toIntOrNull()
         val error = when {
-            input.itemName.isBlank() -> "Item name is required"
-            quantity == null || quantity <= 0 -> "Quantity must be a positive number"
+            input.itemName.isBlank() -> OrderValidationError.ITEM_REQUIRED
+            quantity == null || quantity <= 0 -> OrderValidationError.QUANTITY_MUST_BE_POSITIVE
             else -> null
         }
         if (error != null) {
@@ -133,12 +175,13 @@ class CreateOrderViewModel @Inject constructor(
             return
         }
         _validationError.value = null
-        lastSubmittedRequest = NewOrderRequest(
+        val request = NewOrderRequest(
             itemName = input.itemName.trim(),
             quantity = requireNotNull(quantity),
             customerName = input.customerName.trim(),
-            idempotencyKey = UUID.randomUUID().toString(),
+            operationId = OperationId.random(),
+            idempotencyKey = IdempotencyKey.random(),
         )
-        controller.load()
+        controller.start(request)
     }
 }

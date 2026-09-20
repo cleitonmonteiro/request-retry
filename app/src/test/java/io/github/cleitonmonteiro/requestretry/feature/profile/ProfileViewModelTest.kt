@@ -12,10 +12,8 @@ import io.github.cleitonmonteiro.requestretry.data.remote.mockHttpClient
 import io.github.cleitonmonteiro.requestretry.data.repository.ProfileRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryPolicy
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
-import kotlin.time.Duration
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -47,7 +45,7 @@ class ProfileViewModelTest {
 
         // Assert
         val expected = UserProfile(name = "Ada Lovelace", email = "ada@example.com")
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value.request)
+        assertEquals(expected, (viewModel.state.value.request as OperationState.Succeeded).data)
     }
 
     @Test
@@ -64,8 +62,8 @@ class ProfileViewModelTest {
         // Assert
         assertEquals(Scenario.ALWAYS_FAIL, scenarios.scenario.value)
         assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
-        val feedback = viewModel.state.value.request as RetryUiState.Feedback
-        assertEquals(1, feedback.retriesUsed)
+        val feedback = viewModel.state.value.request as OperationState.Failed
+        assertEquals(3, feedback.attemptsUsed)
     }
 
     @Test
@@ -88,7 +86,6 @@ class ProfileViewModelTest {
         val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(httpClient, ApiClient(scenarios)))
         // A zero-delay policy keeps this test deterministic and independent of the jittered
         // production default — the payoff of RetryController going through an injected factory.
-        val retryControllers = RetryControllerFactory { Duration.ZERO }
-        return ProfileViewModel(GetProfileUseCase(repository), scenarios, retryControllers)
+        return ProfileViewModel(GetProfileUseCase(repository), scenarios, OperationControllerFactory())
     }
 }

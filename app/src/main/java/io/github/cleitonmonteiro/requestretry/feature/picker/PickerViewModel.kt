@@ -9,8 +9,11 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -26,8 +30,8 @@ import kotlinx.coroutines.flow.stateIn
  * StateFlows a caller could read out of sync with one another.
  */
 data class PickerUiState(
-    val items: RetryUiState<List<Item>>,
-    val send: RetryUiState<Action>,
+    val items: OperationState<List<Item>>,
+    val send: OperationState<Action>,
     val selectedItem: Item?,
     val scenario: Scenario,
 )
@@ -47,8 +51,8 @@ sealed interface PickerEffect {
 /**
  * Two independent requests on one screen: [itemsController] loads automatically like every
  * other screen, but [sendController] is built up front and left unstarted until
- * [PickerIntent.SelectItem] causes its `load()` for the first time — a controller starts in
- * [RetryUiState.Idle], so the UI can safely render it before then. Their two [RetryUiState]s
+ * [PickerIntent.SelectItem] starts it for the first time — a controller starts in
+ * [OperationState.Idle], so the UI can safely render it before then. Their two operation states
  * are folded into one [PickerUiState] alongside the selection and scenario, so the screen still
  * has a single source of truth even though it's driven by four independent flows underneath.
  */
@@ -57,15 +61,16 @@ class PickerViewModel @Inject constructor(
     private val getItems: GetItemsUseCase,
     private val sendItem: SendItemUseCase,
     private val scenarios: ScenarioHolder,
-    retryControllers: RetryControllerFactory,
+    operationControllers: OperationControllerFactory,
 ) : ViewModel() {
-
-    private var itemToSend: Item? = null
-
-    private val itemsController = retryControllers.create(viewModelScope) { getItems() }
-    private val sendController = retryControllers.create(viewModelScope) {
-        sendItem(requireNotNull(itemToSend))
-    }
+    private val itemsController = operationControllers.create(
+        scope = viewModelScope,
+        specFactory = OperationSpecFactory<Unit> { OperationProfiles.foregroundRead(OperationName.ITEMS_READ) },
+    ) { _, _ -> getItems().single() }
+    private val sendController = operationControllers.create(
+        scope = viewModelScope,
+        specFactory = OperationSpecFactory<Item> { OperationProfiles.foregroundUnsafeCommand(OperationName.ITEM_SEND) },
+    ) { item, _ -> sendItem(item).single() }
     private val _selectedItem = MutableStateFlow<Item?>(null)
     private val _effects = Channel<PickerEffect>(Channel.BUFFERED)
 
@@ -88,7 +93,7 @@ class PickerViewModel @Inject constructor(
     val effects = _effects.receiveAsFlow()
 
     init {
-        itemsController.load()
+        itemsController.start(Unit)
     }
 
     fun onIntent(intent: PickerIntent) {
@@ -97,13 +102,12 @@ class PickerViewModel @Inject constructor(
             PickerIntent.RetrySend -> sendController.retry()
             PickerIntent.Leave -> _effects.trySend(PickerEffect.NavigateBack)
             is PickerIntent.SelectItem -> {
-                itemToSend = intent.item
                 _selectedItem.value = intent.item
-                sendController.load()
+                sendController.start(intent.item)
             }
             is PickerIntent.SelectScenario -> {
                 scenarios.select(intent.scenario)
-                itemsController.load()
+                itemsController.start(Unit)
                 // The send controller is deliberately left alone: it may not have started yet,
                 // and a scenario change must not silently replay a past selection's send.
             }

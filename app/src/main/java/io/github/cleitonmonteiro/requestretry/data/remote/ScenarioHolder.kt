@@ -13,9 +13,15 @@ enum class Scenario {
     /** Backwards-compatible alias for the original failure demo. */
     ALWAYS_FAIL,
     HTTP_400,
+    HTTP_401,
+    HTTP_403,
     HTTP_404,
+    HTTP_409,
     HTTP_422,
+    HTTP_429,
     HTTP_500,
+    HTTP_503,
+    RESPONSE_LOST_AFTER_COMMIT,
     SUCCEED_ON_THIRD_ATTEMPT,
 }
 

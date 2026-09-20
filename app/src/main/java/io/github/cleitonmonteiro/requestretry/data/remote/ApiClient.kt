@@ -1,8 +1,10 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
-import io.github.cleitonmonteiro.requestretry.domain.error.RequestException
-import io.ktor.client.plugins.ResponseException
-import java.io.IOException
+import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
+import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 /**
@@ -30,26 +32,47 @@ class ApiClient @Inject constructor(
         val simulatedError = when (scenario) {
             Scenario.ALWAYS_SUCCEED -> false
             Scenario.CONNECTION_ERROR, Scenario.ALWAYS_FAIL -> true
-            Scenario.HTTP_400, Scenario.HTTP_404, Scenario.HTTP_422, Scenario.HTTP_500 -> true
+            Scenario.HTTP_400, Scenario.HTTP_401, Scenario.HTTP_403, Scenario.HTTP_404,
+            Scenario.HTTP_409, Scenario.HTTP_422, Scenario.HTTP_429, Scenario.HTTP_500,
+            Scenario.HTTP_503, Scenario.RESPONSE_LOST_AFTER_COMMIT,
+            -> true
             Scenario.SUCCEED_ON_THIRD_ATTEMPT -> attempt < 3
         }
         if (simulatedError) {
             throw when (scenario) {
-                Scenario.CONNECTION_ERROR, Scenario.ALWAYS_FAIL, Scenario.SUCCEED_ON_THIRD_ATTEMPT -> RequestException.Connection()
-                Scenario.HTTP_400 -> RequestException.Http(400)
-                Scenario.HTTP_404 -> RequestException.Http(404)
-                Scenario.HTTP_422 -> RequestException.Http(422)
-                Scenario.HTTP_500 -> RequestException.Http(500)
+                Scenario.CONNECTION_ERROR, Scenario.ALWAYS_FAIL, Scenario.SUCCEED_ON_THIRD_ATTEMPT ->
+                    RequestFailureException(
+                        RequestFailure.Connection(
+                            TimeoutStage.CONNECT,
+                            OutcomeCertainty.NOT_SENT,
+                            "simulated_connection",
+                        ),
+                    )
+                Scenario.RESPONSE_LOST_AFTER_COMMIT -> RequestFailureException(
+                    RequestFailure.Timeout(
+                        TimeoutStage.RESPONSE_HEADERS,
+                        OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
+                    ),
+                )
+                Scenario.HTTP_400 -> RequestFailureException(RequestFailure.Http(400))
+                Scenario.HTTP_401 -> RequestFailureException(RequestFailure.Http(401))
+                Scenario.HTTP_403 -> RequestFailureException(RequestFailure.Http(403))
+                Scenario.HTTP_404 -> RequestFailureException(RequestFailure.Http(404))
+                Scenario.HTTP_409 -> RequestFailureException(RequestFailure.Http(409))
+                Scenario.HTTP_422 -> RequestFailureException(RequestFailure.Http(422))
+                Scenario.HTTP_429 -> RequestFailureException(RequestFailure.Http(429, retryAfter = kotlin.time.Duration.ZERO))
+                Scenario.HTTP_500 -> RequestFailureException(RequestFailure.Http(500))
+                Scenario.HTTP_503 -> RequestFailureException(RequestFailure.Http(503))
                 Scenario.ALWAYS_SUCCEED -> error("unreachable")
             }
         }
         result
-    } catch (error: RequestException) {
+    } catch (error: CancellationException) {
         throw error
-    } catch (error: ResponseException) {
-        throw RequestException.Http(error.response.status.value, error)
-    } catch (error: IOException) {
-        throw RequestException.Connection(error)
+    } catch (error: Error) {
+        throw error
+    } catch (error: Throwable) {
+        throw error.toRequestFailureException()
     }
 
     suspend fun <T> executeHttp(call: suspend () -> T): T = execute(call)

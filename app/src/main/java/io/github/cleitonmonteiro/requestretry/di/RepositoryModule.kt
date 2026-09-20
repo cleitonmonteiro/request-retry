@@ -7,9 +7,13 @@ import dagger.hilt.components.SingletonComponent
 import io.github.cleitonmonteiro.requestretry.data.repository.ItemsRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.data.repository.OrdersRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.data.repository.ProfileRepositoryImpl
+import io.github.cleitonmonteiro.requestretry.data.local.RoomOrderOperationStore
+import io.github.cleitonmonteiro.requestretry.data.work.WorkManagerOrderReconciliationScheduler
 import io.github.cleitonmonteiro.requestretry.domain.repository.ItemsRepository
 import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import io.github.cleitonmonteiro.requestretry.domain.repository.ProfileRepository
+import io.github.cleitonmonteiro.requestretry.domain.repository.OrderOperationStore
+import io.github.cleitonmonteiro.requestretry.domain.repository.OrderReconciliationScheduler
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -23,4 +27,12 @@ abstract class RepositoryModule {
 
     @Binds
     abstract fun bindItemsRepository(impl: ItemsRepositoryImpl): ItemsRepository
+
+    @Binds
+    abstract fun bindOrderOperationStore(impl: RoomOrderOperationStore): OrderOperationStore
+
+    @Binds
+    abstract fun bindOrderReconciliationScheduler(
+        impl: WorkManagerOrderReconciliationScheduler,
+    ): OrderReconciliationScheduler
 }

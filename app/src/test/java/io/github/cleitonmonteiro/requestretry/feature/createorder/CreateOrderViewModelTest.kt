@@ -4,6 +4,8 @@ package io.github.cleitonmonteiro.requestretry.feature.createorder
 
 import app.cash.turbine.test
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
+import io.github.cleitonmonteiro.requestretry.FakeOrderOperationStore
+import io.github.cleitonmonteiro.requestretry.FakeOrderReconciliationScheduler
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.NewOrderRequestDto
 import io.github.cleitonmonteiro.requestretry.data.remote.OrdersRemoteDataSource
@@ -12,9 +14,10 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.repository.OrdersRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
-import io.github.cleitonmonteiro.requestretry.retry.RetryPolicy
-import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
+import io.github.cleitonmonteiro.requestretry.domain.usecase.ScheduleOrderReconciliationUseCase
+import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
+import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockEngineConfig
@@ -25,7 +28,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
-import kotlin.time.Duration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -65,7 +67,7 @@ class CreateOrderViewModelTest {
 
         // Assert
         val expected = Order(id = "A-2000", item = "Backpack", total = 59.97)
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value.result)
+        assertEquals(expected, (viewModel.state.value.result as OperationState.Succeeded).data)
     }
 
     @Test
@@ -89,37 +91,35 @@ class CreateOrderViewModelTest {
     }
 
     @Test
-    fun `retry resends the originally submitted request, not the edited form`() = runTest {
+    fun `automatic retries resend the submitted snapshot with stable identity`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
+        val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
         val capturedBodies = mutableListOf<String>()
         val capturedKeys = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys) {
+        val capturedOperationIds = mutableListOf<String>()
+        val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys, capturedOperationIds) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
         viewModel.onIntent(CreateOrderIntent.ChangeQuantity("3"))
         viewModel.onIntent(CreateOrderIntent.ChangeCustomerName("Ada"))
         viewModel.onIntent(CreateOrderIntent.Submit)
-        advanceUntilIdle()
-        check(viewModel.state.value.result is RetryUiState.Feedback)
-
-        // Act: edit the form without submitting again, then retry
+        // Editing live form state cannot change the immutable session that was just submitted.
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Something else"))
         viewModel.onIntent(CreateOrderIntent.ChangeQuantity("99"))
-        viewModel.onIntent(CreateOrderIntent.Retry)
         advanceUntilIdle()
 
-        // Assert: both requests that went out were for the original submission
-        assertEquals(2, capturedBodies.size)
+        assertEquals(3, capturedBodies.size)
         capturedBodies.forEach { body ->
             val request = Json.decodeFromString<NewOrderRequestDto>(body)
             assertEquals("Backpack", request.itemName)
             assertEquals(3, request.quantity)
         }
-        assertEquals(2, capturedKeys.size)
+        assertEquals(3, capturedKeys.size)
         assertTrue(capturedKeys.first().isNotBlank())
-        assertEquals(capturedKeys.first(), capturedKeys.last())
+        assertEquals(1, capturedKeys.distinct().size)
+        assertEquals(1, capturedOperationIds.distinct().size)
+        assertTrue(viewModel.state.value.result is OperationState.Succeeded)
     }
 
     @Test
@@ -133,7 +133,7 @@ class CreateOrderViewModelTest {
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
         viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
-        check(viewModel.state.value.result is RetryUiState.Success)
+        check(viewModel.state.value.result is OperationState.Succeeded)
 
         // Act: tap a scenario chip after the order was already created
         viewModel.onIntent(CreateOrderIntent.SelectScenario(Scenario.ALWAYS_FAIL))
@@ -141,21 +141,62 @@ class CreateOrderViewModelTest {
 
         // Assert: POST /orders is not idempotent — a scenario change must never replay it
         assertEquals(1, capturedBodies.size)
-        assertEquals(RetryUiState.Success(Order(id = "A-2000", item = "Backpack", total = 59.97)), viewModel.state.value.result)
+        assertEquals(
+            Order(id = "A-2000", item = "Backpack", total = 59.97),
+            (viewModel.state.value.result as OperationState.Succeeded).data,
+        )
         assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
+    }
+
+    @Test
+    fun `lost responses become outcome unknown and reconcile without a new mutation`() = runTest {
+        val scenarios = ScenarioHolder().apply { select(Scenario.RESPONSE_LOST_AFTER_COMMIT) }
+        val capturedBodies = mutableListOf<String>()
+        val scheduler = FakeOrderReconciliationScheduler()
+        val viewModel = newViewModel(scenarios, capturedBodies, scheduler = scheduler) {
+            """{"order_id":"A-2000","item_name":"Backpack","total_amount":"19.99"}"""
+        }
+        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
+        viewModel.onIntent(CreateOrderIntent.Submit)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.result is OperationState.OutcomeUnknown)
+        assertEquals(3, capturedBodies.size)
+        assertEquals(1, scheduler.scheduled.size)
+
+        scenarios.select(Scenario.ALWAYS_SUCCEED)
+        viewModel.onIntent(CreateOrderIntent.VerifyStatus)
+        advanceUntilIdle()
+
+        assertEquals(
+            "A-2000",
+            (viewModel.state.value.result as OperationState.Succeeded).data.id,
+        )
+        assertEquals(3, capturedBodies.size)
     }
 
     private fun newViewModel(
         scenarios: ScenarioHolder,
         capturedBodies: MutableList<String>,
         capturedKeys: MutableList<String> = mutableListOf(),
+        capturedOperationIds: MutableList<String> = mutableListOf(),
+        scheduler: FakeOrderReconciliationScheduler = FakeOrderReconciliationScheduler(),
         respondBody: () -> String,
     ): CreateOrderViewModel {
         val engineConfig = MockEngineConfig().apply {
             dispatcher = Dispatchers.Unconfined
             addHandler { request ->
+                if (request.url.encodedPath.startsWith("/operations/")) {
+                    val operationId = request.url.encodedPath.substringAfterLast('/')
+                    return@addHandler respond(
+                        content = """{"operation_id":"$operationId","status":"SUCCEEDED","order":${respondBody()}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
                 capturedBodies += request.body.toByteArray().decodeToString()
                 capturedKeys += request.headers["Idempotency-Key"].orEmpty()
+                capturedOperationIds += request.headers["X-Operation-ID"].orEmpty()
                 respond(
                     content = respondBody(),
                     status = HttpStatusCode.Created,
@@ -168,8 +209,14 @@ class CreateOrderViewModelTest {
                 json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
             }
         }
-        val createOrder = CreateOrderUseCase(OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient(scenarios))))
-        val retryControllers = RetryControllerFactory(RetryPolicy { Duration.ZERO })
-        return CreateOrderViewModel(createOrder, scenarios, retryControllers)
+        val repository = OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient(scenarios)))
+        val store = FakeOrderOperationStore()
+        return CreateOrderViewModel(
+            createOrder = CreateOrderUseCase(repository, store),
+            verifyOrder = VerifyOrderOperationUseCase(repository, store),
+            scheduleReconciliation = ScheduleOrderReconciliationUseCase(store, scheduler),
+            scenarios = scenarios,
+            operationControllers = OperationControllerFactory(),
+        )
     }
 }

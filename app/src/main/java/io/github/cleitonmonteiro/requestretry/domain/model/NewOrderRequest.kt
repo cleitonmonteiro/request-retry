@@ -4,6 +4,7 @@ data class NewOrderRequest(
     val itemName: String,
     val quantity: Int,
     val customerName: String,
-    /** Stable across retries of one submission; a new submission must use a new key. */
-    val idempotencyKey: String = "",
+    /** Stable across retries/reconciliation; a new business intention gets a new identity. */
+    val operationId: OperationId,
+    val idempotencyKey: IdempotencyKey,
 )

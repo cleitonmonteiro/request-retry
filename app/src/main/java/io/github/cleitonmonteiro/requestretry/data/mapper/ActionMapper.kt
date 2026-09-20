@@ -10,8 +10,8 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Action
  * sealed/enum mapping between layers. This is also where two different failure modes are told
  * apart: an *unrecognized* action type degrades to [Action.Unknown] (see [ActionTypeDto.UNKNOWN]'s
  * doc), but a *recognized* type with a missing required field ([requireTarget]) throws — that's a
- * server bug, not a forward-compatibility gap, and surfaces through `RetryController`'s `.catch`
- * as a retryable `Feedback` instead of being silently swallowed.
+ * server bug, not a forward-compatibility gap, and surfaces as a typed protocol failure instead of
+ * being silently swallowed.
  */
 fun ActionDto.toDomain(): Action = when (actionType) {
     ActionTypeDto.DEEPLINK -> Action.Deeplink(uri = requireTarget(), label = label ?: "Open")

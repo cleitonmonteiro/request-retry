@@ -18,11 +18,20 @@ class OrdersRemoteDataSource @Inject constructor(
         httpClient.get("$BASE_URL/orders").body()
     }
 
-    suspend fun createOrder(request: NewOrderRequestDto, idempotencyKey: String): OrderDto = apiClient.executeHttp {
+    suspend fun createOrder(
+        request: NewOrderRequestDto,
+        operationId: String,
+        idempotencyKey: String,
+    ): OrderDto = apiClient.executeHttp {
         httpClient.post("$BASE_URL/orders") {
             contentType(ContentType.Application.Json)
-            if (idempotencyKey.isNotBlank()) header("Idempotency-Key", idempotencyKey)
+            header("X-Operation-ID", operationId)
+            header("Idempotency-Key", idempotencyKey)
             setBody(request)
         }.body()
+    }
+
+    suspend fun fetchOperationStatus(operationId: String): OrderOperationStatusDto = apiClient.executeHttp {
+        httpClient.get("$BASE_URL/operations/$operationId").body()
     }
 }
