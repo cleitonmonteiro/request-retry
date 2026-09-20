@@ -34,7 +34,8 @@ class RetryController<T>(
     /** Starts (or restarts) the call from a clean slate, resetting the retry budget. */
     fun load() {
         retriesUsed = 0
-        run(delayBefore = Duration.ZERO)
+//        run(delayBefore = Duration.ZERO)
+        run(delayBefore = 5.seconds)
     }
 
     /** Retries the call after a backoff delay. No-op once the retry budget is spent. */
@@ -52,12 +53,12 @@ class RetryController<T>(
         // suspension point must already see Loading, not the stale Feedback it's superseding —
         // otherwise a fast double-tap (or a sub-second backoff, which never enters the countdown
         // loop below) can slip past the guard and spend two retries on one attempt.
-        _state.value = RetryUiState.Loading(delayBefore.inWholeSeconds.toInt().takeIf { it > 0 })
+        _state.value = loadingState(delayBefore.inWholeSeconds.toInt().takeIf { it > 0 })
         job = scope.launch {
             if (delayBefore > Duration.ZERO) awaitBackoff(delayBefore)
             apiCall()
                 .map<T, RetryUiState<T>> { RetryUiState.Success(it) }
-                .onStart { emit(RetryUiState.Loading(backoffSecondsRemaining = null)) }
+                .onStart { emit(loadingState(backoffSecondsRemaining = null)) }
                 .catch { error ->
                     // Flow.catch is transparent to cancellation and rethrows it rather than
                     // reaching this block, so a superseded job (a newer load()/retry()) dies
@@ -86,8 +87,23 @@ class RetryController<T>(
         val fractional = totalDelay - wholeSeconds.seconds
         if (fractional > Duration.ZERO) delay(fractional)
         for (secondsLeft in wholeSeconds downTo 1) {
-            _state.value = RetryUiState.Loading(backoffSecondsRemaining = secondsLeft)
+            _state.value = loadingState(backoffSecondsRemaining = secondsLeft)
             delay(1.seconds)
         }
+    }
+
+    /**
+     * Builds a [RetryUiState.Loading] carrying the current retry attempt (null for the first
+     * attempt via [load], non-null once [retry] has bumped [retriesUsed]) — [retriesUsed] is
+     * stable for the whole duration of one [run] call, so it's read directly rather than
+     * threaded through as a parameter.
+     */
+    private fun loadingState(backoffSecondsRemaining: Int?): RetryUiState.Loading {
+        val retryAttempt = retriesUsed.takeIf { it > 0 }
+        return RetryUiState.Loading(
+            backoffSecondsRemaining = backoffSecondsRemaining,
+            retryAttempt = retryAttempt,
+            maxRetries = retryAttempt?.let { maxRetries },
+        )
     }
 }

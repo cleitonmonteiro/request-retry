@@ -80,10 +80,15 @@ class RetryControllerTest {
 
             // Assert
             assertEquals(1, callCountBeforeDelayElapses)
-            assertEquals(3, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
+            val countdown3 = awaitItem() as RetryUiState.Loading
+            assertEquals(3, countdown3.backoffSecondsRemaining)
+            assertEquals(1, countdown3.retryAttempt) // this backoff belongs to retry #1
+            assertEquals(3, countdown3.maxRetries)
             assertEquals(2, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
             assertEquals(1, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
-            assertEquals(null, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
+            val inFlight = awaitItem() as RetryUiState.Loading
+            assertEquals(null, inFlight.backoffSecondsRemaining) // countdown over, call now in flight
+            assertEquals(1, inFlight.retryAttempt)
             assertEquals(RetryUiState.Success("payload"), awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
@@ -163,6 +168,46 @@ class RetryControllerTest {
         val feedback = controller.state.value as RetryUiState.Feedback
         assertEquals(0, feedback.retriesUsed)
         assertTrue(feedback.canRetry)
+    }
+
+    @Test
+    fun `load's Loading state carries no retry attempt info`() = runTest {
+        // Arrange
+        val controller = RetryController(scope = this, apiCall = ApiCall { flowOf("payload") })
+
+        // Act: read state right after the synchronous pre-set in run(), before the call resolves
+        controller.load()
+        val loading = controller.state.value as RetryUiState.Loading
+
+        // Assert: this is the first attempt, not a retry — nothing to report yet
+        assertEquals(null, loading.retryAttempt)
+        assertEquals(null, loading.maxRetries)
+
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `a second retry reports retryAttempt 2`() = runTest {
+        // Arrange: always fails, zero delay so each retry's synchronous pre-set is easy to inspect
+        val controller = RetryController(
+            scope = this,
+            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
+            retryPolicy = RetryPolicy { Duration.ZERO },
+        )
+        controller.load()
+        advanceUntilIdle()
+        controller.retry() // retry #1
+        advanceUntilIdle()
+
+        // Act
+        controller.retry() // retry #2
+        val loading = controller.state.value as RetryUiState.Loading
+
+        // Assert
+        assertEquals(2, loading.retryAttempt)
+        assertEquals(3, loading.maxRetries)
+
+        advanceUntilIdle()
     }
 
     @Test
