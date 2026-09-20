@@ -39,6 +39,7 @@ fun CreateOrderRoute(
                 Toast.LENGTH_SHORT,
             ).show()
             is RetryUiState.Feedback -> Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+            RetryUiState.Idle -> Unit
             is RetryUiState.Loading -> Unit
         }
     }

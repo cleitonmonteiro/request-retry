@@ -73,7 +73,8 @@ class CreateOrderViewModelTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
         val capturedBodies = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies) {
+        val capturedKeys = mutableListOf<String>()
+        val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
         viewModel.onItemNameChanged("Backpack")
@@ -96,6 +97,9 @@ class CreateOrderViewModelTest {
             assertEquals("Backpack", request.itemName)
             assertEquals(3, request.quantity)
         }
+        assertEquals(2, capturedKeys.size)
+        assertTrue(capturedKeys.first().isNotBlank())
+        assertEquals(capturedKeys.first(), capturedKeys.last())
     }
 
     @Test
@@ -124,12 +128,14 @@ class CreateOrderViewModelTest {
     private fun newViewModel(
         scenarios: ScenarioHolder,
         capturedBodies: MutableList<String>,
+        capturedKeys: MutableList<String> = mutableListOf(),
         respondBody: () -> String,
     ): CreateOrderViewModel {
         val engineConfig = MockEngineConfig().apply {
             dispatcher = Dispatchers.Unconfined
             addHandler { request ->
                 capturedBodies += request.body.toByteArray().decodeToString()
+                capturedKeys += request.headers["Idempotency-Key"].orEmpty()
                 respond(
                     content = respondBody(),
                     status = HttpStatusCode.Created,

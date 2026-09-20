@@ -16,5 +16,5 @@ class OrdersRepositoryImpl @Inject constructor(
     override fun getOrders(): Flow<List<Order>> = flow { emit(remote.fetchOrders().map { it.toDomain() }) }
 
     override fun createOrder(request: NewOrderRequest): Flow<Order> =
-        flow { emit(remote.createOrder(request.toDto()).toDomain()) }
+        flow { emit(remote.createOrder(request.toDto(), request.idempotencyKey).toDomain()) }
 }

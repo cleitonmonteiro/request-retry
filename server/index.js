@@ -9,6 +9,7 @@ const orders = [
   { order_id: 'A-1002', item_name: 'USB-C hub', total_amount: '34.50' },
   { order_id: 'A-1003', item_name: 'Monitor arm', total_amount: '129.00' },
 ];
+const orderResponsesByIdempotencyKey = new Map();
 
 const items = [
   { item_id: 'I-1', item_name: 'Backpack' },
@@ -52,6 +53,11 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, orders);
   }
   if (req.method === 'POST' && url.pathname === '/orders') {
+    const idempotencyKey = req.headers['idempotency-key'];
+    if (idempotencyKey && orderResponsesByIdempotencyKey.has(idempotencyKey)) {
+      const cached = orderResponsesByIdempotencyKey.get(idempotencyKey);
+      return sendJson(res, cached.status, cached.body);
+    }
     readJsonBody(req)
       .then((body) => {
         const created = {
@@ -60,6 +66,7 @@ const server = http.createServer((req, res) => {
           total_amount: ((Number(body.quantity) || 1) * 19.99).toFixed(2),
         };
         orders.push(created);
+        if (idempotencyKey) orderResponsesByIdempotencyKey.set(idempotencyKey, { status: 201, body: created });
         sendJson(res, 201, created);
       })
       .catch(() => sendJson(res, 400, { error: 'Invalid JSON body' }));

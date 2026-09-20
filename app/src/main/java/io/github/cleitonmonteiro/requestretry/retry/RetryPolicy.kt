@@ -22,11 +22,21 @@ class ExponentialBackoffPolicy(
     private val random: Random = Random.Default,
 ) : RetryPolicy {
 
+    init {
+        require(base >= Duration.ZERO) { "base must be non-negative" }
+        require(factor >= 0.0) { "factor must be non-negative" }
+        require(max >= Duration.ZERO) { "max must be non-negative" }
+        require(jitterRatio in 0.0..1.0) { "jitterRatio must be between 0 and 1" }
+    }
+
     override fun delayFor(attempt: Int): Duration {
-        val raw = base * factor.pow(attempt - 1)
-        val jitter = if (jitterRatio > 0.0) 1.0 + random.nextDouble(-jitterRatio, jitterRatio) else 1.0
-        // Jitter is applied before the cap, not after: jittering an already-capped delay could
-        // push it up to jitterRatio past max, making max not actually a ceiling.
+        require(attempt >= 1) { "attempt must be 1-based" }
+        val raw = (base * factor.pow(attempt - 1)).coerceAtMost(max)
+        val jitter = if (jitterRatio > 0.0) {
+            1.0 + random.nextDouble(-jitterRatio, 0.0)
+        } else 1.0
+        // Cap before applying downward jitter so high-attempt retries still vary while never
+        // exceeding max.
         return (raw * jitter).coerceIn(Duration.ZERO, max)
     }
 }

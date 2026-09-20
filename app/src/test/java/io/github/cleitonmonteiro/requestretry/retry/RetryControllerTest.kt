@@ -11,6 +11,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -54,7 +56,27 @@ class RetryControllerTest {
     }
 
     @Test
-    fun `retry waits out the policy delay before calling again, reporting a countdown along the way`() = runTest {
+    fun `eager ApiCall failure becomes Feedback instead of leaving Loading`() = runTest {
+        val controller = RetryController<String>(scope = this, apiCall = ApiCall { throw IOException("boom") })
+
+        controller.load()
+        advanceUntilIdle()
+
+        assertTrue(controller.state.value is RetryUiState.Feedback)
+    }
+
+    @Test
+    fun `an empty ApiCall flow becomes Feedback instead of leaving Loading`() = runTest {
+        val controller = RetryController(scope = this, apiCall = ApiCall<String> { emptyFlow() })
+
+        controller.load()
+        advanceUntilIdle()
+
+        assertTrue(controller.state.value is RetryUiState.Feedback)
+    }
+
+    @Test
+    fun `retry waits out the policy delay before calling again`() = runTest {
         // Arrange
         var callCount = 0
         val api = ApiCall<String> {
@@ -69,29 +91,19 @@ class RetryControllerTest {
             retryPolicy = RetryPolicy { 3.seconds },
         )
 
-        controller.state.test {
-            skipItems(1) // initial Loading()
-            controller.load()
-            awaitItem() // failed first attempt -> Feedback
+        controller.load()
+        advanceUntilIdle()
 
-            // Act
-            controller.retry()
-            val callCountBeforeDelayElapses = callCount
+        // Act
+        controller.retry()
 
-            // Assert
-            assertEquals(1, callCountBeforeDelayElapses)
-            val countdown3 = awaitItem() as RetryUiState.Loading
-            assertEquals(3, countdown3.backoffSecondsRemaining)
-            assertEquals(1, countdown3.retryAttempt) // this backoff belongs to retry #1
-            assertEquals(3, countdown3.maxRetries)
-            assertEquals(2, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
-            assertEquals(1, (awaitItem() as RetryUiState.Loading).backoffSecondsRemaining)
-            val inFlight = awaitItem() as RetryUiState.Loading
-            assertEquals(null, inFlight.backoffSecondsRemaining) // countdown over, call now in flight
-            assertEquals(1, inFlight.retryAttempt)
-            assertEquals(RetryUiState.Success("payload"), awaitItem())
-            cancelAndIgnoreRemainingEvents()
-        }
+        // Assert: retry state is visible immediately, but the API is not called during backoff.
+        assertEquals(RetryUiState.Loading(retryAttempt = 1, maxRetries = 3), controller.state.value)
+        assertEquals(1, callCount)
+        advanceTimeBy(2.seconds)
+        assertEquals(1, callCount)
+        advanceUntilIdle()
+        assertEquals(RetryUiState.Success("payload"), controller.state.value)
     }
 
     @Test
@@ -212,8 +224,7 @@ class RetryControllerTest {
 
     @Test
     fun `double-tapping retry only spends one retry, even when the backoff is under a second`() = runTest {
-        // Arrange: a sub-second delay, so awaitBackoff's whole-second countdown loop never runs
-        // and the only thing keeping a second tap from double-spending is state turning to
+        // Arrange: the only thing keeping a second tap from double-spending is state turning to
         // Loading synchronously, before the caller gets control back.
         var callCount = 0
         val api = ApiCall<String> { flow { callCount++; throw IOException("boom") } }
@@ -247,7 +258,7 @@ class RetryControllerTest {
         val controller = RetryController(scope = this, apiCall = api)
 
         controller.state.test {
-            skipItems(1) // initial Loading()
+            skipItems(1) // initial Idle
 
             // Act: start a call, then supersede it with a fresh load() before it resolves
             controller.load()
@@ -255,7 +266,8 @@ class RetryControllerTest {
             advanceUntilIdle()
 
             // Assert: a spurious Feedback from the cancelled first job would be buffered
-            // ahead of this and fail the assertion — only the second call's Success follows
+            // ahead of this and fail the assertion — only the second call's Loading and Success follow
+            assertTrue(awaitItem() is RetryUiState.Loading)
             assertEquals(RetryUiState.Success("payload"), awaitItem())
             cancelAndIgnoreRemainingEvents()
         }

@@ -11,6 +11,7 @@ import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -104,6 +105,7 @@ class CreateOrderViewModel @Inject constructor(
             itemName = input.itemName.trim(),
             quantity = requireNotNull(quantity),
             customerName = input.customerName.trim(),
+            idempotencyKey = UUID.randomUUID().toString(),
         )
         _hasSubmitted.value = true
         controller.load()

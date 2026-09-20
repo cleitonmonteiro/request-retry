@@ -33,8 +33,8 @@ data class PickerUiState(
 /**
  * Two independent requests on one screen: [itemsController] loads automatically like every
  * other screen, but [sendController] is built up front and left unstarted until [selectItem]
- * calls its `load()` for the first time — a controller can sit idle without misbehaving, as
- * long as nothing renders its (default, unstarted) state before then. Their two [RetryUiState]s
+ * calls its `load()` for the first time — a controller starts in [RetryUiState.Idle], so the UI
+ * can safely render it before then. Their two [RetryUiState]s
  * are folded into one [PickerUiState] alongside the selection and scenario, so the screen still
  * has a single source of truth even though it's driven by four independent flows underneath.
  */

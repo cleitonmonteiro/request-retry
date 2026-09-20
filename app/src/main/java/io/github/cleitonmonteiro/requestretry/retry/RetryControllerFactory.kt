@@ -19,6 +19,20 @@ class RetryControllerFactory @Inject constructor(
     ): RetryController<T> =
         RetryController(scope = scope, apiCall = apiCall, retryPolicy = retryPolicy, maxRetries = maxRetries)
 
+    /** Variant for callers that can distinguish transient failures from terminal ones. */
+    fun <T> createWithRetryability(
+        scope: CoroutineScope,
+        maxRetries: Int = DEFAULT_MAX_RETRIES,
+        isRetryable: (Throwable) -> Boolean,
+        apiCall: ApiCall<T>,
+    ): RetryController<T> = RetryController(
+        scope = scope,
+        apiCall = apiCall,
+        retryPolicy = retryPolicy,
+        maxRetries = maxRetries,
+        isRetryable = isRetryable,
+    )
+
     companion object {
         /** The retry budget every screen gets unless it asks for a different one. */
         const val DEFAULT_MAX_RETRIES = 3

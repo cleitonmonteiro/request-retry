@@ -39,6 +39,7 @@ fun <T> RetryStateScaffold(
         verticalArrangement = Arrangement.Center,
     ) {
         when (state) {
+            RetryUiState.Idle -> Unit
             is RetryUiState.Loading -> {
                 if (state.retryAttempt != null) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
@@ -47,13 +48,6 @@ fun <T> RetryStateScaffold(
                         modifier = Modifier.padding(top = 16.dp),
                         style = MaterialTheme.typography.labelLarge,
                     )
-                    if (state.backoffSecondsRemaining != null) {
-                        Text(
-                            text = "Retrying in ${state.backoffSecondsRemaining}s…",
-                            modifier = Modifier.padding(top = 4.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                 } else {
                     CircularProgressIndicator()
                 }
@@ -113,7 +107,7 @@ fun ScenarioSelector(
 private fun RetryStateScaffoldLoadingPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
-            state = RetryUiState.Loading(backoffSecondsRemaining = 4),
+            state = RetryUiState.Loading(),
             onRetry = {},
             onLeave = {},
         ) {}
@@ -125,7 +119,7 @@ private fun RetryStateScaffoldLoadingPreview() {
 private fun RetryStateScaffoldRetryLoadingPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
-            state = RetryUiState.Loading(backoffSecondsRemaining = 2, retryAttempt = 1, maxRetries = 3),
+            state = RetryUiState.Loading(retryAttempt = 1, maxRetries = 3),
             onRetry = {},
             onLeave = {},
         ) {}
