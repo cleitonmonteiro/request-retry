@@ -14,11 +14,11 @@ class OrdersRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val apiClient: ApiClient,
 ) {
-    suspend fun fetchOrders(): List<OrderDto> = apiClient.execute {
+    suspend fun fetchOrders(): List<OrderDto> = apiClient.executeHttp {
         httpClient.get("$BASE_URL/orders").body()
     }
 
-    suspend fun createOrder(request: NewOrderRequestDto, idempotencyKey: String): OrderDto = apiClient.execute {
+    suspend fun createOrder(request: NewOrderRequestDto, idempotencyKey: String): OrderDto = apiClient.executeHttp {
         httpClient.post("$BASE_URL/orders") {
             contentType(ContentType.Application.Json)
             if (idempotencyKey.isNotBlank()) header("Idempotency-Key", idempotencyKey)

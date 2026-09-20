@@ -11,30 +11,38 @@ import kotlinx.coroutines.CoroutineScope
  */
 class RetryControllerFactory @Inject constructor(
     private val retryPolicy: RetryPolicy,
+    private val errorTypeStrategy: ErrorTypeStrategy,
 ) {
+    constructor(retryPolicy: RetryPolicy) : this(retryPolicy, DefaultErrorTypeStrategy)
     fun <T> create(
         scope: CoroutineScope,
-        maxRetries: Int = DEFAULT_MAX_RETRIES,
+        maxRetries: Int = DEFAULT_MAX_ATTEMPTS,
         apiCall: ApiCall<T>,
     ): RetryController<T> =
-        RetryController(scope = scope, apiCall = apiCall, retryPolicy = retryPolicy, maxRetries = maxRetries)
+        RetryController(
+            scope = scope,
+            apiCall = apiCall,
+            retryPolicy = retryPolicy,
+            maxAttempts = maxRetries,
+            errorTypeStrategy = errorTypeStrategy,
+        )
 
-    /** Variant for callers that can distinguish transient failures from terminal ones. */
-    fun <T> createWithRetryability(
+    fun <T> createWithErrorStrategy(
         scope: CoroutineScope,
-        maxRetries: Int = DEFAULT_MAX_RETRIES,
-        isRetryable: (Throwable) -> Boolean,
+        maxRetries: Int = DEFAULT_MAX_ATTEMPTS,
+        errorTypeStrategy: ErrorTypeStrategy = DefaultErrorTypeStrategy,
         apiCall: ApiCall<T>,
     ): RetryController<T> = RetryController(
         scope = scope,
         apiCall = apiCall,
         retryPolicy = retryPolicy,
-        maxRetries = maxRetries,
-        isRetryable = isRetryable,
+        maxAttempts = maxRetries,
+        errorTypeStrategy = errorTypeStrategy,
     )
 
     companion object {
         /** The retry budget every screen gets unless it asks for a different one. */
-        const val DEFAULT_MAX_RETRIES = 3
+        const val DEFAULT_MAX_ATTEMPTS = 3
+        const val DEFAULT_MAX_RETRIES = DEFAULT_MAX_ATTEMPTS
     }
 }

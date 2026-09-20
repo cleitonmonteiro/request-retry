@@ -38,7 +38,7 @@ fun CreateOrderRoute(
                 "Order ${result.data.id} created",
                 Toast.LENGTH_SHORT,
             ).show()
-            is RetryUiState.Feedback -> Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+            is RetryUiState.Feedback -> Unit
             RetryUiState.Idle -> Unit
             is RetryUiState.Loading -> Unit
         }
@@ -46,33 +46,34 @@ fun CreateOrderRoute(
 
     Column(modifier = modifier.fillMaxSize()) {
         ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
-        OutlinedTextField(
+        val showingFeedback = uiState.result is RetryUiState.Feedback
+        if (!showingFeedback) OutlinedTextField(
             value = uiState.input.itemName,
             onValueChange = viewModel::onItemNameChanged,
             label = { Text("Item name") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
-        OutlinedTextField(
+        if (!showingFeedback) OutlinedTextField(
             value = uiState.input.quantity,
             onValueChange = viewModel::onQuantityChanged,
             label = { Text("Quantity") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        OutlinedTextField(
+        if (!showingFeedback) OutlinedTextField(
             value = uiState.input.customerName,
             onValueChange = viewModel::onCustomerNameChanged,
             label = { Text("Customer name") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
         val validationError = uiState.validationError
-        if (validationError != null) {
+        if (!showingFeedback && validationError != null) {
             Text(
                 text = validationError,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
-        Button(onClick = viewModel::submit, modifier = Modifier.padding(16.dp)) {
+        if (!showingFeedback) Button(onClick = viewModel::submit, modifier = Modifier.padding(16.dp)) {
             Text("Create order")
         }
         if (uiState.hasSubmitted) {

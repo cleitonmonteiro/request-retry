@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
+import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import io.github.cleitonmonteiro.requestretry.ui.action.ActionButton
 import io.github.cleitonmonteiro.requestretry.ui.components.RetryStateScaffold
 import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
@@ -34,23 +35,32 @@ fun PickerRoute(
 
     Column(modifier = modifier.fillMaxSize()) {
         ScenarioSelector(selected = uiState.scenario, onSelect = viewModel::setScenario)
-        RetryStateScaffold(
-            state = uiState.items,
-            onRetry = viewModel::retryItems,
-            onLeave = onLeave,
-            modifier = Modifier.weight(1f),
-        ) { items ->
-            ItemsList(items = items, selectedItemId = uiState.selectedItem?.id, onSelect = viewModel::selectItem)
-        }
-
         val itemBeingSent = uiState.selectedItem
-        if (itemBeingSent != null) {
+        val feedback = uiState.items as? RetryUiState.Feedback ?: uiState.send as? RetryUiState.Feedback
+        if (feedback != null) {
             RetryStateScaffold(
-                state = uiState.send,
-                onRetry = viewModel::retrySend,
+                state = feedback,
+                onRetry = if (uiState.items is RetryUiState.Feedback) viewModel::retryItems else viewModel::retrySend,
                 onLeave = onLeave,
                 modifier = Modifier.weight(1f),
-            ) { action -> SendConfirmation(item = itemBeingSent, action = action) }
+            ) {}
+        } else {
+            RetryStateScaffold(
+                state = uiState.items,
+                onRetry = viewModel::retryItems,
+                onLeave = onLeave,
+                modifier = Modifier.weight(1f),
+            ) { items ->
+                ItemsList(items = items, selectedItemId = itemBeingSent?.id, onSelect = viewModel::selectItem)
+            }
+            if (itemBeingSent != null) {
+                RetryStateScaffold(
+                    state = uiState.send,
+                    onRetry = viewModel::retrySend,
+                    onLeave = onLeave,
+                    modifier = Modifier.weight(1f),
+                ) { action -> SendConfirmation(item = itemBeingSent, action = action) }
+            }
         }
     }
 }

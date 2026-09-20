@@ -57,22 +57,27 @@ fun <T> RetryStateScaffold(
 
             is RetryUiState.Feedback -> {
                 Text(
-                    text = state.message,
+                    text = state.error.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = state.error.description,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = "Attempt ${state.retriesUsed} of ${state.maxRetries} retries used",
+                    text = "Attempt ${state.attemptsUsed} of ${state.maxAttempts}",
                     modifier = Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (state.canRetry) {
                     Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
-                        Text("Retry (${state.retriesUsed} of ${state.maxRetries})")
+                        Text(state.error.buttonLabel)
                     }
                 } else {
                     Button(onClick = onLeave, modifier = Modifier.padding(top = 16.dp)) {
-                        Text("Leave")
+                        Text(state.error.buttonLabel)
                     }
                 }
             }
@@ -144,9 +149,11 @@ private fun RetryStateScaffoldFeedbackPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
             state = RetryUiState.Feedback(
-                message = "Request failed",
-                retriesUsed = 1,
-                maxRetries = 3,
+                error = io.github.cleitonmonteiro.requestretry.retry.FeedbackErrorData(
+                    "Something went wrong", "Try again later", "Try again",
+                ),
+                attemptsUsed = 1,
+                maxAttempts = 3,
                 canRetry = true,
             ),
             onRetry = {},
@@ -161,9 +168,11 @@ private fun RetryStateScaffoldExhaustedPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
             state = RetryUiState.Feedback(
-                message = "Request failed",
-                retriesUsed = 3,
-                maxRetries = 3,
+                error = io.github.cleitonmonteiro.requestretry.retry.FeedbackErrorData(
+                    "Something went wrong", "Try again later", "Go back",
+                ),
+                attemptsUsed = 3,
+                maxAttempts = 3,
                 canRetry = false,
             ),
             onRetry = {},

@@ -22,6 +22,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
+        expectSuccess = true
         install(ContentNegotiation) {
             // coerceInputValues: an unrecognized enum value (e.g. a future ActionTypeDto the
             // server added) decodes to its default instead of throwing — see ActionDto's doc.

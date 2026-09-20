@@ -64,7 +64,7 @@ class ProfileViewModelTest {
         assertEquals(Scenario.ALWAYS_FAIL, scenarios.scenario.value)
         assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
         val feedback = viewModel.state.value.request as RetryUiState.Feedback
-        assertEquals(0, feedback.retriesUsed)
+        assertEquals(1, feedback.retriesUsed)
     }
 
     private fun newViewModel(scenarios: ScenarioHolder): ProfileViewModel {

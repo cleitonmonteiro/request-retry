@@ -9,7 +9,13 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Which way [FakeNetwork] should behave, so a screen's demo can be driven from the UI. */
 enum class Scenario {
     ALWAYS_SUCCEED,
+    CONNECTION_ERROR,
+    /** Backwards-compatible alias for the original failure demo. */
     ALWAYS_FAIL,
+    HTTP_400,
+    HTTP_404,
+    HTTP_422,
+    HTTP_500,
     SUCCEED_ON_THIRD_ATTEMPT,
 }
 

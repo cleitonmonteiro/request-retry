@@ -49,9 +49,9 @@ class RetryControllerTest {
 
         // Assert
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals("boom", feedback.message)
-        assertEquals(0, feedback.retriesUsed)
-        assertEquals(3, feedback.maxRetries)
+        assertEquals("We couldn’t complete your request. Try again.", feedback.message)
+        assertEquals(1, feedback.attemptsUsed)
+        assertEquals(3, feedback.maxAttempts)
         assertTrue(feedback.canRetry)
     }
 
@@ -98,7 +98,7 @@ class RetryControllerTest {
         controller.retry()
 
         // Assert: retry state is visible immediately, but the API is not called during backoff.
-        assertEquals(RetryUiState.Loading(retryAttempt = 1, maxRetries = 3), controller.state.value)
+        assertEquals(RetryUiState.Loading(retryAttempt = 2, maxRetries = 3), controller.state.value)
         assertEquals(1, callCount)
         advanceTimeBy(2.seconds)
         assertEquals(1, callCount)
@@ -118,7 +118,7 @@ class RetryControllerTest {
         advanceUntilIdle()
 
         // Act
-        repeat(3) {
+        repeat(2) {
             controller.retry()
             advanceUntilIdle()
         }
@@ -139,7 +139,7 @@ class RetryControllerTest {
         )
         controller.load()
         advanceUntilIdle()
-        repeat(3) {
+        repeat(2) {
             controller.retry()
             advanceUntilIdle()
         }
@@ -178,7 +178,7 @@ class RetryControllerTest {
 
         // Assert
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals(0, feedback.retriesUsed)
+        assertEquals(1, feedback.retriesUsed)
         assertTrue(feedback.canRetry)
     }
 
@@ -216,7 +216,7 @@ class RetryControllerTest {
         val loading = controller.state.value as RetryUiState.Loading
 
         // Assert
-        assertEquals(2, loading.retryAttempt)
+        assertEquals(3, loading.retryAttempt)
         assertEquals(3, loading.maxRetries)
 
         advanceUntilIdle()
@@ -248,7 +248,7 @@ class RetryControllerTest {
         assertTrue(stateRightAfterFirstTap is RetryUiState.Loading)
         assertEquals(2, callCount)
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals(1, feedback.retriesUsed)
+        assertEquals(2, feedback.retriesUsed)
     }
 
     @Test

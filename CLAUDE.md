@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Common engineering rules
+
+Follow the repository-wide [common engineering rules](COMMON_RULES.md) for architecture, SOLID,
+MVI, Compose, data handling, testing, and code quality. The project-specific instructions below
+take precedence where they are more specific. `AGENTS.md` is a symlink to this file, so agents see
+the same link and project guidance.
+
 ## Project state
 
 RequestRetry is a study case for the request-retry-with-backoff pattern in Jetpack Compose, built on top of Android Studio's default "Empty Activity" template. Every screen calls a real HTTP endpoint (a small mocked Node server, see `server/`) through Ktor, and demonstrates a Loading/Success/Feedback state machine with manual, budgeted retries — failure is simulated client-side (see `ApiClient` below) since the mocked server always succeeds.

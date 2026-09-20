@@ -43,6 +43,6 @@ class RetryControllerFactoryTest {
 
         val feedback = controller.state.value as RetryUiState.Feedback
         assertEquals(1, feedback.maxRetries)
-        assertEquals(true, feedback.canRetry)
+        assertEquals(false, feedback.canRetry)
     }
 }

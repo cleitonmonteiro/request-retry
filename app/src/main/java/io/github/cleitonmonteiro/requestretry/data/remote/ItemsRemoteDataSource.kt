@@ -10,11 +10,11 @@ class ItemsRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val apiClient: ApiClient,
 ) {
-    suspend fun fetchItems(): List<ItemDto> = apiClient.execute {
+    suspend fun fetchItems(): List<ItemDto> = apiClient.executeHttp {
         httpClient.get("$BASE_URL/items").body()
     }
 
-    suspend fun submitItem(itemId: String): SendItemResponseDto = apiClient.execute {
+    suspend fun submitItem(itemId: String): SendItemResponseDto = apiClient.executeHttp {
         httpClient.post("$BASE_URL/items/$itemId/send").body()
     }
 }

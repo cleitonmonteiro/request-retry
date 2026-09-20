@@ -1,5 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestException
+import io.ktor.client.plugins.ResponseException
 import java.io.IOException
 import javax.inject.Inject
 
@@ -16,7 +18,7 @@ class ApiClient @Inject constructor(
     private var lastGeneration = scenarios.generation.value
     private var attempt = 0
 
-    suspend fun <T> execute(call: suspend () -> T): T {
+    suspend fun <T> execute(call: suspend () -> T): T = try {
         val generation = scenarios.generation.value
         if (generation != lastGeneration) {
             lastGeneration = generation
@@ -25,12 +27,30 @@ class ApiClient @Inject constructor(
         attempt++
         val result = call()
         val scenario = scenarios.scenario.value
-        val shouldFail = when (scenario) {
+        val simulatedError = when (scenario) {
             Scenario.ALWAYS_SUCCEED -> false
-            Scenario.ALWAYS_FAIL -> true
+            Scenario.CONNECTION_ERROR, Scenario.ALWAYS_FAIL -> true
+            Scenario.HTTP_400, Scenario.HTTP_404, Scenario.HTTP_422, Scenario.HTTP_500 -> true
             Scenario.SUCCEED_ON_THIRD_ATTEMPT -> attempt < 3
         }
-        if (shouldFail) throw IOException("Request failed")
-        return result
+        if (simulatedError) {
+            throw when (scenario) {
+                Scenario.CONNECTION_ERROR, Scenario.ALWAYS_FAIL, Scenario.SUCCEED_ON_THIRD_ATTEMPT -> RequestException.Connection()
+                Scenario.HTTP_400 -> RequestException.Http(400)
+                Scenario.HTTP_404 -> RequestException.Http(404)
+                Scenario.HTTP_422 -> RequestException.Http(422)
+                Scenario.HTTP_500 -> RequestException.Http(500)
+                Scenario.ALWAYS_SUCCEED -> error("unreachable")
+            }
+        }
+        result
+    } catch (error: RequestException) {
+        throw error
+    } catch (error: ResponseException) {
+        throw RequestException.Http(error.response.status.value, error)
+    } catch (error: IOException) {
+        throw RequestException.Connection(error)
     }
+
+    suspend fun <T> executeHttp(call: suspend () -> T): T = execute(call)
 }

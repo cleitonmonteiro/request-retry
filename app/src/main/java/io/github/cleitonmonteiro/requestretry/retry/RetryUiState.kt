@@ -20,9 +20,13 @@ sealed interface RetryUiState<out T> {
     data class Success<T>(val data: T) : RetryUiState<T>
 
     data class Feedback(
-        val message: String,
-        val retriesUsed: Int,
-        val maxRetries: Int,
+        val error: FeedbackErrorData,
+        val attemptsUsed: Int,
+        val maxAttempts: Int,
         val canRetry: Boolean,
-    ) : RetryUiState<Nothing>
+    ) : RetryUiState<Nothing> {
+        val message: String get() = error.description
+        val retriesUsed: Int get() = attemptsUsed
+        val maxRetries: Int get() = maxAttempts
+    }
 }

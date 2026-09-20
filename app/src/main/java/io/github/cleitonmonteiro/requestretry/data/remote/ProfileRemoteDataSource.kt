@@ -9,7 +9,7 @@ class ProfileRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val apiClient: ApiClient,
 ) {
-    suspend fun fetchProfile(): ProfileDto = apiClient.execute {
+    suspend fun fetchProfile(): ProfileDto = apiClient.executeHttp {
         httpClient.get("$BASE_URL/profile").body()
     }
 }

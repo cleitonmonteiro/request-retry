@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.launch
-import java.io.IOException
 import kotlin.time.Duration
 
 /**
@@ -25,66 +24,58 @@ class RetryController<T>(
     private val scope: CoroutineScope,
     private val apiCall: ApiCall<T>,
     private val retryPolicy: RetryPolicy = ExponentialBackoffPolicy(),
-    private val maxRetries: Int = 3,
-    private val isRetryable: (Throwable) -> Boolean = { it is Exception },
+    private val maxAttempts: Int = RetryControllerFactory.DEFAULT_MAX_ATTEMPTS,
+    private val errorTypeStrategy: ErrorTypeStrategy = DefaultErrorTypeStrategy,
 ) {
     init {
-        require(maxRetries >= 0) { "maxRetries must be non-negative" }
+        require(maxAttempts > 0) { "maxAttempts must be positive" }
     }
 
     private val _state = MutableStateFlow<RetryUiState<T>>(RetryUiState.Idle)
     val state: StateFlow<RetryUiState<T>> = _state.asStateFlow()
 
-    private var retriesUsed = 0
     private var job: Job? = null
     private var generation = 0L
 
     /** Starts (or restarts) the call from a clean slate, resetting the retry budget. */
-    fun load() {
-        retriesUsed = 0
-        run(delayBefore = Duration.ZERO)
-    }
+    fun load() = run(attemptNumber = 1, delayBefore = Duration.ZERO)
 
     /** Retries the call after a backoff delay. No-op once the retry budget is spent. */
     fun retry() {
         val current = _state.value
         if (current !is RetryUiState.Feedback || !current.canRetry) return
-        val nextAttempt = retriesUsed + 1
-        val delayBefore = retryPolicy.delayFor(nextAttempt).coerceAtLeast(Duration.ZERO)
-        retriesUsed = nextAttempt
-        run(delayBefore)
+        val nextAttempt = current.attemptsUsed + 1
+        val delayBefore = retryPolicy.delayFor(current.attemptsUsed).coerceAtLeast(Duration.ZERO)
+        run(attemptNumber = nextAttempt, delayBefore = delayBefore)
     }
 
-    private fun run(delayBefore: Duration) {
+    private fun run(attemptNumber: Int, delayBefore: Duration) {
         job?.cancel()
         val runGeneration = ++generation
-        val runRetriesUsed = retriesUsed
         // Set synchronously, before the coroutine below is even scheduled: retry()'s in-flight
         // guard reads _state.value, so a second tap between this call and the coroutine's first
         // suspension point must already see Loading, not the stale Feedback it's superseding —
         // otherwise a fast double-tap (or a sub-second backoff, which never enters the countdown
         // loop below) can slip past the guard and spend two retries on one attempt.
-        _state.value = loadingState(runRetriesUsed)
+        _state.value = loadingState(attemptNumber)
         job = scope.launch {
             if (delayBefore > Duration.ZERO) delay(delayBefore)
             flow { emit(apiCall().single()) }
                 .map<T, RetryUiState<T>> { RetryUiState.Success(it) }
-                .onStart { emit(loadingState(runRetriesUsed)) }
+                .onStart { emit(loadingState(attemptNumber)) }
                 .catch { error ->
                     // Flow.catch is transparent to cancellation and rethrows it rather than
                     // reaching this block, so a superseded job (a newer load()/retry()) dies
                     // quietly instead of being reported as a failed request.
                     if (error is CancellationException || error is Error) throw error
+                    val type = errorTypeStrategy.classify(error)
+                    val canRetry = type != ErrorType.UNPROCESSABLE_ENTITY && attemptNumber < maxAttempts
                     emit(
                         RetryUiState.Feedback(
-                            // Only IOException (what ApiClient's scenario injection throws) has
-                            // a message meant for a user; anything else — a mapper throwing on
-                            // a malformed response, say — falls back to a generic message rather
-                            // than leaking an internal exception string into the UI.
-                            message = (error as? IOException)?.message ?: "Something went wrong",
-                            retriesUsed = runRetriesUsed,
-                            maxRetries = maxRetries,
-                            canRetry = isRetryable(error) && runRetriesUsed < maxRetries,
+                            error = type.feedback(canRetry),
+                            attemptsUsed = attemptNumber,
+                            maxAttempts = maxAttempts,
+                            canRetry = canRetry,
                         )
                     )
                 }
@@ -98,11 +89,11 @@ class RetryController<T>(
      * stable for the whole duration of one [run] call, so the snapshot is threaded through rather
      * than reading mutable controller state from a superseded coroutine.
      */
-    private fun loadingState(retriesUsed: Int): RetryUiState.Loading {
-        val retryAttempt = retriesUsed.takeIf { it > 0 }
+    private fun loadingState(attemptNumber: Int): RetryUiState.Loading {
+        val retryAttempt = attemptNumber.takeIf { it > 1 }
         return RetryUiState.Loading(
             retryAttempt = retryAttempt,
-            maxRetries = retryAttempt?.let { maxRetries },
+            maxRetries = retryAttempt?.let { maxAttempts },
         )
     }
 }
