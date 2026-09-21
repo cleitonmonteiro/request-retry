@@ -4,45 +4,29 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * Builds [RetryController]s sharing one app-wide [RetryPolicy], so backoff tuning has a single
- * home instead of being a constructor default repeated at each call site. This is the only
- * `retry/` type that carries a DI annotation — `@Inject` is bare JSR-330, no Dagger types — so
- * the package otherwise stays framework-free.
+ * Builds [RetryController]s sharing the app's one injected [RetryPolicy], [RetryDecider] and
+ * [RetryObserver], so backoff tuning and retry-decision policy each have a single home
+ * (`di/RetryModule.kt`) instead of being constructor defaults repeated at every call site. This
+ * is the only `retry/` type that carries a DI annotation — `@Inject` is bare JSR-330, no Dagger
+ * types — so the package otherwise stays framework-free.
  */
 class RetryControllerFactory @Inject constructor(
     private val retryPolicy: RetryPolicy,
-    private val errorTypeStrategy: ErrorTypeStrategy,
+    private val decider: RetryDecider,
+    private val observer: RetryObserver,
 ) {
-    constructor(retryPolicy: RetryPolicy) : this(retryPolicy, DefaultErrorTypeStrategy)
+    constructor(retryPolicy: RetryPolicy) : this(retryPolicy, DefaultRetryDecider, RetryObserver.NoOp)
+
     fun <T> create(
         scope: CoroutineScope,
-        maxRetries: Int = DEFAULT_MAX_ATTEMPTS,
-        apiCall: ApiCall<T>,
-    ): RetryController<T> =
-        RetryController(
-            scope = scope,
-            apiCall = apiCall,
-            retryPolicy = retryPolicy,
-            maxAttempts = maxRetries,
-            errorTypeStrategy = errorTypeStrategy,
-        )
-
-    fun <T> createWithErrorStrategy(
-        scope: CoroutineScope,
-        maxRetries: Int = DEFAULT_MAX_ATTEMPTS,
-        errorTypeStrategy: ErrorTypeStrategy = DefaultErrorTypeStrategy,
+        spec: OperationSpec,
         apiCall: ApiCall<T>,
     ): RetryController<T> = RetryController(
         scope = scope,
         apiCall = apiCall,
+        spec = spec,
         retryPolicy = retryPolicy,
-        maxAttempts = maxRetries,
-        errorTypeStrategy = errorTypeStrategy,
+        decider = decider,
+        observer = observer,
     )
-
-    companion object {
-        /** The retry budget every screen gets unless it asks for a different one. */
-        const val DEFAULT_MAX_ATTEMPTS = 3
-        const val DEFAULT_MAX_RETRIES = DEFAULT_MAX_ATTEMPTS
-    }
 }

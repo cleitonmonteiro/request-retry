@@ -1,3 +1,44 @@
 <resources>
     <string name="app_name">RequestRetry</string>
+
+    <!-- RetryUiState.Loading / BackingOff -->
+    <string name="retry_loading_initial">Loading…</string>
+    <string name="retry_loading_attempt">Retrying — attempt %1$d of %2$d</string>
+    <string name="retry_backing_off">Retrying in %1$ds — attempt %2$d of %3$d</string>
+    <string name="retry_attempt_count">Attempt %1$d of %2$d</string>
+
+    <!-- PublicFailure titles -->
+    <string name="retry_failure_offline_title">No connection</string>
+    <string name="retry_failure_connection_title">Something went wrong</string>
+    <string name="retry_failure_timeout_title">Taking too long</string>
+    <string name="retry_failure_validation_title">Request couldn’t be processed</string>
+    <string name="retry_failure_not_found_title">Not found</string>
+    <string name="retry_failure_conflict_title">Something changed</string>
+    <string name="retry_failure_permission_title">Not authorized</string>
+    <string name="retry_failure_rate_limited_title">Too many requests</string>
+    <string name="retry_failure_server_title">Something went wrong</string>
+    <string name="retry_failure_protocol_title">Unexpected response</string>
+    <string name="retry_failure_ambiguous_mutation_title">We couldn’t confirm this</string>
+    <string name="retry_failure_unknown_title">Something went wrong</string>
+
+    <!-- PublicFailure descriptions -->
+    <string name="retry_failure_offline_description">Check your internet connection and try again.</string>
+    <string name="retry_failure_connection_description">We couldn’t reach the server. Try again.</string>
+    <string name="retry_failure_timeout_description">The server took too long to respond.</string>
+    <string name="retry_failure_validation_description">Check your information and try again.</string>
+    <string name="retry_failure_not_found_description">We couldn’t find what you were looking for.</string>
+    <string name="retry_failure_conflict_description">This request no longer matches the current state.</string>
+    <string name="retry_failure_permission_description">You’re not authorized to do this.</string>
+    <string name="retry_failure_rate_limited_description">Please wait a moment before trying again.</string>
+    <string name="retry_failure_server_description">We couldn’t complete your request.</string>
+    <string name="retry_failure_protocol_description">The server’s response wasn’t what we expected.</string>
+    <string name="retry_failure_ambiguous_mutation_description">This may have already gone through. Check before trying again.</string>
+    <string name="retry_failure_unknown_description">We couldn’t complete your request.</string>
+
+    <!-- RecoveryAction button labels -->
+    <string name="recovery_retry">Try again</string>
+    <string name="recovery_edit_input">Edit and try again</string>
+    <string name="recovery_authenticate">Sign in</string>
+    <string name="recovery_go_back">Go back</string>
+    <string name="recovery_contact_support">Contact support</string>
 </resources>

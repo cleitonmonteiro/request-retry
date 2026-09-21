@@ -90,8 +90,10 @@ class CreateOrderViewModelTest {
 
     @Test
     fun `retry resends the originally submitted request, not the edited form`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
+        // Arrange: TIMEOUT simulates a request that never left the client (NOT_SENT), which is
+        // the one failure a command still offers a manual retry for — see DefaultRetryDecider.
+        // ALWAYS_FAIL (MAY_HAVE_REACHED_SERVER) would make the command terminal instead.
+        val scenarios = ScenarioHolder().apply { select(Scenario.TIMEOUT) }
         val capturedBodies = mutableListOf<String>()
         val capturedKeys = mutableListOf<String>()
         val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys) {
@@ -102,7 +104,8 @@ class CreateOrderViewModelTest {
         viewModel.onIntent(CreateOrderIntent.ChangeCustomerName("Ada"))
         viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
-        check(viewModel.state.value.result is RetryUiState.Feedback)
+        val feedback = viewModel.state.value.result as RetryUiState.Feedback
+        check(feedback.canRetry)
 
         // Act: edit the form without submitting again, then retry
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Something else"))

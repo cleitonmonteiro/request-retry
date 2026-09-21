@@ -60,10 +60,22 @@ const server = http.createServer((req, res) => {
     }
     readJsonBody(req)
       .then((body) => {
+        // A real validation error, with a real message — this is what RequestFailure.Http.message
+        // carries back to the client for a 422, instead of a generic client-side string.
+        if (!body.item_name || !String(body.item_name).trim()) {
+          const response = { status: 422, body: { error: 'item_name is required' } };
+          if (idempotencyKey) orderResponsesByIdempotencyKey.set(idempotencyKey, response);
+          return sendJson(res, response.status, response.body);
+        }
+        if (!(Number(body.quantity) > 0)) {
+          const response = { status: 422, body: { error: 'quantity must be a positive number' } };
+          if (idempotencyKey) orderResponsesByIdempotencyKey.set(idempotencyKey, response);
+          return sendJson(res, response.status, response.body);
+        }
         const created = {
           order_id: `A-${1000 + orders.length + 1}`,
-          item_name: body.item_name || 'Untitled item',
-          total_amount: ((Number(body.quantity) || 1) * 19.99).toFixed(2),
+          item_name: body.item_name,
+          total_amount: (Number(body.quantity) * 19.99).toFixed(2),
         };
         orders.push(created);
         if (idempotencyKey) orderResponsesByIdempotencyKey.set(idempotencyKey, { status: 201, body: created });

@@ -45,9 +45,9 @@ class ProfileViewModelTest {
         viewModel.onIntent(ProfileIntent.Retry)
         advanceUntilIdle()
 
-        // Assert
+        // Assert: the failed initial load plus this retry is 2 attempts used
         val expected = UserProfile(name = "Ada Lovelace", email = "ada@example.com")
-        assertEquals(RetryUiState.Success(expected), viewModel.state.value.request)
+        assertEquals(RetryUiState.Success(expected, attemptsUsed = 2), viewModel.state.value.request)
     }
 
     @Test
@@ -65,7 +65,10 @@ class ProfileViewModelTest {
         assertEquals(Scenario.ALWAYS_FAIL, scenarios.scenario.value)
         assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
         val feedback = viewModel.state.value.request as RetryUiState.Feedback
-        assertEquals(1, feedback.retriesUsed)
+        // A fresh load() resets the budget: 1 attempt used, 0 retries — see the plan's §9.3
+        // vocabulary fix (three attempts is two retries, not three).
+        assertEquals(1, feedback.attemptsUsed)
+        assertEquals(0, feedback.retriesUsed)
     }
 
     @Test

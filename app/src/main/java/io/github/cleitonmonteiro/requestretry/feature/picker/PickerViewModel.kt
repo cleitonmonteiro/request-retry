@@ -9,6 +9,8 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Action
 import io.github.cleitonmonteiro.requestretry.domain.model.Item
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetItemsUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.SendItemUseCase
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
@@ -62,8 +64,18 @@ class PickerViewModel @Inject constructor(
 
     private var itemToSend: Item? = null
 
-    private val itemsController = retryControllers.create(viewModelScope) { getItems() }
-    private val sendController = retryControllers.create(viewModelScope) {
+    private val itemsController = retryControllers.create(
+        viewModelScope,
+        OperationSpec.read(OperationName.PICKER_ITEMS),
+    ) { getItems() }
+
+    // A command's failure whose outcome is uncertain is always terminal — see
+    // DefaultRetryDecider — so a send that may have reached the server is never retried
+    // automatically or manually.
+    private val sendController = retryControllers.create(
+        viewModelScope,
+        OperationSpec.command(OperationName.PICKER_SEND),
+    ) {
         sendItem(requireNotNull(itemToSend))
     }
     private val _selectedItem = MutableStateFlow<Item?>(null)

@@ -12,16 +12,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.cleitonmonteiro.requestretry.R
 import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
+import io.github.cleitonmonteiro.requestretry.retry.PublicFailure
+import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import io.github.cleitonmonteiro.requestretry.ui.theme.RequestRetryTheme
 
 /**
- * Renders the Loading and Feedback states shared by every retry-backed screen, delegating
- * only the Success case to the caller. This is the UI half of the retry-core reuse.
+ * Renders the Loading, BackingOff and Feedback states shared by every retry-backed screen,
+ * delegating only the Success case to the caller. This is the UI half of the retry-core reuse.
+ *
+ * [onRetry] fires when the rendered [RetryUiState.Feedback.recovery] is [RecoveryAction.Retry];
+ * every other recovery action falls back to [onLeave] — none of them make sense to keep the user
+ * on this screen for in a demo app with no auth flow or editable-in-place form.
  */
 @Composable
 fun <T> RetryStateScaffold(
@@ -40,11 +48,12 @@ fun <T> RetryStateScaffold(
     ) {
         when (state) {
             RetryUiState.Idle -> Unit
+
             is RetryUiState.Loading -> {
-                if (state.retryAttempt != null) {
+                if (state.attempt > 1) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
                     Text(
-                        text = "Retrying — attempt ${state.retryAttempt} of ${state.maxRetries}",
+                        text = stringResource(R.string.retry_loading_attempt, state.attempt, state.maxAttempts),
                         modifier = Modifier.padding(top = 16.dp),
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -53,32 +62,45 @@ fun <T> RetryStateScaffold(
                 }
             }
 
+            is RetryUiState.BackingOff -> {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
+                Text(
+                    text = stringResource(
+                        R.string.retry_backing_off,
+                        state.secondsRemaining,
+                        state.nextAttempt,
+                        state.maxAttempts,
+                    ),
+                    modifier = Modifier.padding(top = 16.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+
             is RetryUiState.Success -> success(state.data)
 
             is RetryUiState.Feedback -> {
                 Text(
-                    text = state.error.title,
+                    text = state.failure.title(),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    text = state.error.description,
+                    // A server-provided message (currently only for a 422) takes priority over
+                    // the generic local copy — see RetryUiState.Feedback.serverMessage's KDoc.
+                    text = state.serverMessage ?: state.failure.description(),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = "Attempt ${state.attemptsUsed} of ${state.maxAttempts}",
+                    text = stringResource(R.string.retry_attempt_count, state.attemptsUsed, state.maxAttempts),
                     modifier = Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                if (state.canRetry) {
-                    Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
-                        Text(state.error.buttonLabel)
-                    }
-                } else {
-                    Button(onClick = onLeave, modifier = Modifier.padding(top = 16.dp)) {
-                        Text(state.error.buttonLabel)
-                    }
+                Button(
+                    onClick = if (state.recovery == RecoveryAction.Retry) onRetry else onLeave,
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
+                    Text(state.recovery.label())
                 }
             }
         }
@@ -112,7 +134,7 @@ fun ScenarioSelector(
 private fun RetryStateScaffoldLoadingPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
-            state = RetryUiState.Loading(),
+            state = RetryUiState.Loading(attempt = 1, maxAttempts = 3),
             onRetry = {},
             onLeave = {},
         ) {}
@@ -124,7 +146,24 @@ private fun RetryStateScaffoldLoadingPreview() {
 private fun RetryStateScaffoldRetryLoadingPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
-            state = RetryUiState.Loading(retryAttempt = 1, maxRetries = 3),
+            state = RetryUiState.Loading(attempt = 2, maxAttempts = 3),
+            onRetry = {},
+            onLeave = {},
+        ) {}
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun RetryStateScaffoldBackingOffPreview() {
+    RequestRetryTheme {
+        RetryStateScaffold<String>(
+            state = RetryUiState.BackingOff(
+                nextAttempt = 2,
+                maxAttempts = 3,
+                secondsRemaining = 3,
+                reason = io.github.cleitonmonteiro.requestretry.retry.RetryReason.BACKOFF,
+            ),
             onRetry = {},
             onLeave = {},
         ) {}
@@ -149,12 +188,10 @@ private fun RetryStateScaffoldFeedbackPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
             state = RetryUiState.Feedback(
-                error = io.github.cleitonmonteiro.requestretry.retry.FeedbackErrorData(
-                    "Something went wrong", "Try again later", "Try again",
-                ),
+                failure = PublicFailure.CONNECTION,
+                recovery = RecoveryAction.Retry,
                 attemptsUsed = 1,
                 maxAttempts = 3,
-                canRetry = true,
             ),
             onRetry = {},
             onLeave = {},
@@ -168,12 +205,10 @@ private fun RetryStateScaffoldExhaustedPreview() {
     RequestRetryTheme {
         RetryStateScaffold<String>(
             state = RetryUiState.Feedback(
-                error = io.github.cleitonmonteiro.requestretry.retry.FeedbackErrorData(
-                    "Something went wrong", "Try again later", "Go back",
-                ),
+                failure = PublicFailure.CONNECTION,
+                recovery = RecoveryAction.GoBack,
                 attemptsUsed = 3,
                 maxAttempts = 3,
-                canRetry = false,
             ),
             onRetry = {},
             onLeave = {},

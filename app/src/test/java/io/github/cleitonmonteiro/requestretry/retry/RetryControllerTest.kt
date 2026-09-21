@@ -3,6 +3,9 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import app.cash.turbine.test
+import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
 import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -22,6 +25,9 @@ import org.junit.Test
 
 class RetryControllerTest {
 
+    /** A read-side failure the default decider always treats as retryable — see RetryDeciderTest. */
+    private fun boom() = RequestFailureException(RequestFailure.Connection(OutcomeCertainty.NOT_SENT))
+
     @Test
     fun `load emits Success after the call succeeds`() = runTest {
         // Arrange
@@ -40,6 +46,28 @@ class RetryControllerTest {
         // Arrange
         val controller = RetryController(
             scope = this,
+            apiCall = ApiCall<String> { flow { throw boom() } },
+        )
+
+        // Act
+        controller.load()
+        advanceUntilIdle()
+
+        // Assert
+        val feedback = controller.state.value as RetryUiState.Feedback
+        assertEquals(PublicFailure.CONNECTION, feedback.failure)
+        assertEquals(RecoveryAction.Retry, feedback.recovery)
+        assertEquals(1, feedback.attemptsUsed)
+        assertEquals(3, feedback.maxAttempts)
+        assertTrue(feedback.canRetry)
+    }
+
+    @Test
+    fun `an unclassifiable failure is terminal by default`() = runTest {
+        // Arrange: a plain, unwrapped exception — never explicitly classified as retryable —
+        // must fail closed rather than default to retryable, per the plan's principle 1.
+        val controller = RetryController(
+            scope = this,
             apiCall = ApiCall<String> { flow { throw IOException("boom") } },
         )
 
@@ -49,15 +77,14 @@ class RetryControllerTest {
 
         // Assert
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals("We couldn’t complete your request. Try again.", feedback.message)
-        assertEquals(1, feedback.attemptsUsed)
-        assertEquals(3, feedback.maxAttempts)
-        assertTrue(feedback.canRetry)
+        assertEquals(PublicFailure.UNKNOWN, feedback.failure)
+        assertFalse(feedback.canRetry)
+        assertEquals(RecoveryAction.GoBack, feedback.recovery)
     }
 
     @Test
     fun `eager ApiCall failure becomes Feedback instead of leaving Loading`() = runTest {
-        val controller = RetryController<String>(scope = this, apiCall = ApiCall { throw IOException("boom") })
+        val controller = RetryController<String>(scope = this, apiCall = ApiCall { throw boom() })
 
         controller.load()
         advanceUntilIdle()
@@ -76,13 +103,13 @@ class RetryControllerTest {
     }
 
     @Test
-    fun `retry waits out the policy delay before calling again`() = runTest {
+    fun `retry counts down through BackingOff before calling again`() = runTest {
         // Arrange
         var callCount = 0
         val api = ApiCall<String> {
             flow {
                 callCount++
-                if (callCount == 1) throw IOException("boom") else emit("payload")
+                if (callCount == 1) throw boom() else emit("payload")
             }
         }
         val controller = RetryController(
@@ -97,21 +124,21 @@ class RetryControllerTest {
         // Act
         controller.retry()
 
-        // Assert: retry state is visible immediately, but the API is not called during backoff.
-        assertEquals(RetryUiState.Loading(retryAttempt = 2, maxRetries = 3), controller.state.value)
+        // Assert: BackingOff is visible immediately, but the API is not called during the countdown.
+        assertEquals(RetryUiState.BackingOff(nextAttempt = 2, maxAttempts = 3, secondsRemaining = 3, reason = RetryReason.BACKOFF), controller.state.value)
         assertEquals(1, callCount)
         advanceTimeBy(2.seconds)
         assertEquals(1, callCount)
         advanceUntilIdle()
-        assertEquals(RetryUiState.Success("payload"), controller.state.value)
+        assertEquals(RetryUiState.Success("payload", attemptsUsed = 2), controller.state.value)
     }
 
     @Test
-    fun `three failed retries exhaust the retry budget`() = runTest {
+    fun `three failed attempts exhaust the retry budget`() = runTest {
         // Arrange
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
+            apiCall = ApiCall<String> { flow { throw boom() } },
             retryPolicy = RetryPolicy { Duration.ZERO },
         )
         controller.load()
@@ -123,9 +150,10 @@ class RetryControllerTest {
             advanceUntilIdle()
         }
 
-        // Assert
+        // Assert: 3 attempts used == 2 retries, not 3 — see RetryUiState.Feedback.retriesUsed's KDoc.
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals(3, feedback.retriesUsed)
+        assertEquals(3, feedback.attemptsUsed)
+        assertEquals(2, feedback.retriesUsed)
         assertFalse(feedback.canRetry)
     }
 
@@ -134,7 +162,7 @@ class RetryControllerTest {
         // Arrange
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
+            apiCall = ApiCall<String> { flow { throw boom() } },
             retryPolicy = RetryPolicy { Duration.ZERO },
         )
         controller.load()
@@ -157,7 +185,7 @@ class RetryControllerTest {
     fun `load resets the retry budget after a previous session recovered`() = runTest {
         // Arrange
         var shouldFail = true
-        val api = ApiCall<String> { flow { if (shouldFail) throw IOException("boom") else emit("payload") } }
+        val api = ApiCall<String> { flow { if (shouldFail) throw boom() else emit("payload") } }
         val controller = RetryController(
             scope = this,
             apiCall = api,
@@ -178,46 +206,46 @@ class RetryControllerTest {
 
         // Assert
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals(1, feedback.retriesUsed)
+        assertEquals(1, feedback.attemptsUsed)
         assertTrue(feedback.canRetry)
     }
 
     @Test
-    fun `load's Loading state carries no retry attempt info`() = runTest {
+    fun `load's Loading state reports attempt 1`() = runTest {
         // Arrange
         val controller = RetryController(scope = this, apiCall = ApiCall { flowOf("payload") })
 
-        // Act: read state right after the synchronous pre-set in run(), before the call resolves
+        // Act: read state right after the synchronous pre-set in load(), before the call resolves
         controller.load()
         val loading = controller.state.value as RetryUiState.Loading
 
-        // Assert: this is the first attempt, not a retry — nothing to report yet
-        assertEquals(null, loading.retryAttempt)
-        assertEquals(null, loading.maxRetries)
+        // Assert: this is the first attempt, not a retry
+        assertEquals(1, loading.attempt)
+        assertEquals(3, loading.maxAttempts)
 
         advanceUntilIdle()
     }
 
     @Test
-    fun `a second retry reports retryAttempt 2`() = runTest {
+    fun `a second retry reports attempt 3`() = runTest {
         // Arrange: always fails, zero delay so each retry's synchronous pre-set is easy to inspect
         val controller = RetryController(
             scope = this,
-            apiCall = ApiCall<String> { flow { throw IOException("boom") } },
+            apiCall = ApiCall<String> { flow { throw boom() } },
             retryPolicy = RetryPolicy { Duration.ZERO },
         )
         controller.load()
         advanceUntilIdle()
-        controller.retry() // retry #1
+        controller.retry() // retry #1 -> attempt 2
         advanceUntilIdle()
 
         // Act
-        controller.retry() // retry #2
+        controller.retry() // retry #2 -> attempt 3
         val loading = controller.state.value as RetryUiState.Loading
 
         // Assert
-        assertEquals(3, loading.retryAttempt)
-        assertEquals(3, loading.maxRetries)
+        assertEquals(3, loading.attempt)
+        assertEquals(3, loading.maxAttempts)
 
         advanceUntilIdle()
     }
@@ -225,9 +253,9 @@ class RetryControllerTest {
     @Test
     fun `double-tapping retry only spends one retry, even when the backoff is under a second`() = runTest {
         // Arrange: the only thing keeping a second tap from double-spending is state turning to
-        // Loading synchronously, before the caller gets control back.
+        // BackingOff synchronously, before the caller gets control back.
         var callCount = 0
-        val api = ApiCall<String> { flow { callCount++; throw IOException("boom") } }
+        val api = ApiCall<String> { flow { callCount++; throw boom() } }
         val controller = RetryController(
             scope = this,
             apiCall = api,
@@ -245,10 +273,10 @@ class RetryControllerTest {
 
         // Assert: the first tap already moved state off Feedback, so the second tap's guard
         // (`current !is Feedback`) rejects it — only one retry is spent, one call is made
-        assertTrue(stateRightAfterFirstTap is RetryUiState.Loading)
+        assertTrue(stateRightAfterFirstTap is RetryUiState.BackingOff)
         assertEquals(2, callCount)
         val feedback = controller.state.value as RetryUiState.Feedback
-        assertEquals(2, feedback.retriesUsed)
+        assertEquals(2, feedback.attemptsUsed)
     }
 
     @Test
@@ -272,4 +300,25 @@ class RetryControllerTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `an attempt that never resolves times out and becomes a terminal Feedback`() = runTest {
+        // Arrange: a spec with a short per-attempt timeout, and a call that never emits
+        val spec = OperationSpec.read(OperationName.DEMO, maxAttempts = 1, perAttemptTimeout = 2.seconds)
+        val controller = RetryController(
+            scope = this,
+            apiCall = ApiCall<String> { flow { delay(1.hours) } },
+            spec = spec,
+        )
+
+        // Act
+        controller.load()
+        advanceUntilIdle()
+
+        // Assert
+        val feedback = controller.state.value as RetryUiState.Feedback
+        assertEquals(PublicFailure.TIMEOUT, feedback.failure)
+    }
+
+    private val Int.hours get() = (this * 3600).seconds
 }

@@ -8,6 +8,8 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
@@ -71,7 +73,14 @@ class CreateOrderViewModel @Inject constructor(
 
     private val _formInput = MutableStateFlow(OrderFormInput())
     private val _validationError = MutableStateFlow<String?>(null)
-    private val controller = retryControllers.create(viewModelScope) { createOrder(lastSubmittedRequest) }
+    // A command's failure whose outcome is uncertain is always terminal — see
+    // DefaultRetryDecider — even though this request already carries an Idempotency-Key (kept
+    // as-is per the plan's §1.1 decision not to evolve it further); the retry decision here
+    // doesn't distinguish commands by idempotency.
+    private val controller = retryControllers.create(
+        viewModelScope,
+        OperationSpec.command(OperationName.CREATE_ORDER),
+    ) { createOrder(lastSubmittedRequest) }
     private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)
 
     val state: StateFlow<CreateOrderUiState> = combine(

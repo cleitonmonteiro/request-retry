@@ -1,99 +1,147 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
+import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.launch
-import kotlin.time.Duration
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Drives a mocked [apiCall] through the load/retry/backoff lifecycle shared by every
- * retry-backed screen in this app. A screen's ViewModel owns one of these and exposes
- * [state] as-is; the payload type [T] is the only thing that varies between screens.
+ * retry-backed screen in this app, according to [spec]. A screen's ViewModel owns one of these
+ * and exposes [state] as-is; the payload type [T] is the only thing that varies between screens.
+ *
+ * Every request into this class — [load] and [retry] — runs its decide-and-publish step
+ * *synchronously* on the caller's thread, guarded by [commandLock]'s non-suspending [Mutex.tryLock]:
+ * that's what closes the double-tap race across dispatchers the plan's §11.1 calls out, while
+ * still publishing the new [RetryUiState] before the caller regains control, exactly like the
+ * original implementation did — see `RetryControllerTest`'s double-tap test. Only the actual
+ * delay + network call runs in a launched coroutine.
  */
 class RetryController<T>(
     private val scope: CoroutineScope,
     private val apiCall: ApiCall<T>,
+    private val spec: OperationSpec = OperationSpec.read(OperationName.DEMO),
     private val retryPolicy: RetryPolicy = ExponentialBackoffPolicy(),
-    private val maxAttempts: Int = RetryControllerFactory.DEFAULT_MAX_ATTEMPTS,
-    private val errorTypeStrategy: ErrorTypeStrategy = DefaultErrorTypeStrategy,
+    private val decider: RetryDecider = DefaultRetryDecider,
+    private val executor: RetryExecutor = RetryExecutor(),
+    private val observer: RetryObserver = RetryObserver.NoOp,
 ) {
-    init {
-        require(maxAttempts > 0) { "maxAttempts must be positive" }
-    }
-
     private val _state = MutableStateFlow<RetryUiState<T>>(RetryUiState.Idle)
     val state: StateFlow<RetryUiState<T>> = _state.asStateFlow()
 
+    private val commandLock = Mutex()
     private var job: Job? = null
     private var generation = 0L
 
-    /** Starts (or restarts) the call from a clean slate, resetting the retry budget. */
-    fun load() = run(attemptNumber = 1, delayBefore = Duration.ZERO)
+    /** The `Retry-After` from the last failure, if any — read back by [retry] to time the delay. */
+    private var lastRetryAfter: Duration? = null
 
-    /** Retries the call after a backoff delay. No-op once the retry budget is spent. */
-    fun retry() {
-        val current = _state.value
-        if (current !is RetryUiState.Feedback || !current.canRetry) return
-        val nextAttempt = current.attemptsUsed + 1
-        val delayBefore = retryPolicy.delayFor(current.attemptsUsed).coerceAtLeast(Duration.ZERO)
-        run(attemptNumber = nextAttempt, delayBefore = delayBefore)
-    }
-
-    private fun run(attemptNumber: Int, delayBefore: Duration) {
-        job?.cancel()
-        val runGeneration = ++generation
-        // Set synchronously, before the coroutine below is even scheduled: retry()'s in-flight
-        // guard reads _state.value, so a second tap between this call and the coroutine's first
-        // suspension point must already see Loading, not the stale Feedback it's superseding —
-        // otherwise a fast double-tap (or a sub-second backoff, which never enters the countdown
-        // loop below) can slip past the guard and spend two retries on one attempt.
-        _state.value = loadingState(attemptNumber)
-        job = scope.launch {
-            if (delayBefore > Duration.ZERO) delay(delayBefore)
-            flow { emit(apiCall().single()) }
-                .map<T, RetryUiState<T>> { RetryUiState.Success(it) }
-                .onStart { emit(loadingState(attemptNumber)) }
-                .catch { error ->
-                    // Flow.catch is transparent to cancellation and rethrows it rather than
-                    // reaching this block, so a superseded job (a newer load()/retry()) dies
-                    // quietly instead of being reported as a failed request.
-                    if (error is CancellationException || error is Error) throw error
-                    val type = errorTypeStrategy.classify(error)
-                    val canRetry = type != ErrorType.UNPROCESSABLE_ENTITY && attemptNumber < maxAttempts
-                    emit(
-                        RetryUiState.Feedback(
-                            error = type.feedback(canRetry),
-                            attemptsUsed = attemptNumber,
-                            maxAttempts = maxAttempts,
-                            canRetry = canRetry,
-                        )
-                    )
+    /** Starts (or restarts) the call from a clean slate, resetting the attempt budget. */
+    fun load() {
+        if (!commandLock.tryLock()) return
+        try {
+            when (spec.concurrency) {
+                ConcurrencyPolicy.CancelPrevious -> job?.cancel()
+                ConcurrencyPolicy.DropWhileRunning -> if (job?.isActive == true) {
+                    observer.onDropped(spec.name)
+                    return
                 }
-                .collect { if (runGeneration == generation) _state.value = it }
+            }
+            lastRetryAfter = null
+            publishAndLaunch(attempt = 1, delayBefore = Duration.ZERO, reason = RetryReason.MANUAL)
+        } finally {
+            commandLock.unlock()
         }
     }
 
-    /**
-     * Builds a [RetryUiState.Loading] carrying the current retry attempt (null for the first
-     * attempt via [load], non-null once [retry] has bumped [retriesUsed]) — [retriesUsed] is
-     * stable for the whole duration of one [run] call, so the snapshot is threaded through rather
-     * than reading mutable controller state from a superseded coroutine.
-     */
-    private fun loadingState(attemptNumber: Int): RetryUiState.Loading {
-        val retryAttempt = attemptNumber.takeIf { it > 1 }
-        return RetryUiState.Loading(
-            retryAttempt = retryAttempt,
-            maxRetries = retryAttempt?.let { maxAttempts },
+    /** Retries after a backoff delay. No-op unless the current [RetryUiState.Feedback] allows it. */
+    fun retry() {
+        if (!commandLock.tryLock()) return
+        try {
+            val current = _state.value
+            if (current !is RetryUiState.Feedback || !current.canRetry) return
+            if (spec.concurrency == ConcurrencyPolicy.DropWhileRunning && job?.isActive == true) return
+
+            val retryAfter = lastRetryAfter
+            val (delayBefore, reason) = if (retryAfter != null) {
+                retryAfter.coerceAtMost(RETRY_AFTER_CAP) to RetryReason.RETRY_AFTER_HEADER
+            } else {
+                retryPolicy.delayFor(current.attemptsUsed) to RetryReason.BACKOFF
+            }
+            publishAndLaunch(attempt = current.attemptsUsed + 1, delayBefore = delayBefore, reason = reason)
+        } finally {
+            commandLock.unlock()
+        }
+    }
+
+    private fun publishAndLaunch(attempt: Int, delayBefore: Duration, reason: RetryReason) {
+        val runGeneration = ++generation
+        _state.value = if (delayBefore > Duration.ZERO) {
+            RetryUiState.BackingOff(attempt, spec.maxAttempts, secondsRemaining(delayBefore), reason)
+        } else {
+            RetryUiState.Loading(attempt, spec.maxAttempts)
+        }
+        job = scope.launch { runAttempt(attempt, delayBefore, reason, runGeneration) }
+    }
+
+    private suspend fun runAttempt(attempt: Int, delayBefore: Duration, reason: RetryReason, runGeneration: Long) {
+        var remaining = delayBefore
+        while (remaining > Duration.ZERO) {
+            val tick = remaining.coerceAtMost(1.seconds)
+            delay(tick)
+            if (runGeneration != generation) return
+            remaining -= tick
+            if (remaining > Duration.ZERO) {
+                _state.value = RetryUiState.BackingOff(attempt, spec.maxAttempts, secondsRemaining(remaining), reason)
+            }
+        }
+
+        _state.value = RetryUiState.Loading(attempt, spec.maxAttempts)
+        observer.onAttemptStarted(spec.name, attempt)
+        val result = executor.attempt(apiCall, spec.perAttemptTimeout)
+        if (runGeneration != generation) return
+
+        when (result) {
+            is AttemptResult.Success -> {
+                lastRetryAfter = null
+                observer.onFinished(spec.name, OperationResult.SUCCEEDED)
+                _state.value = RetryUiState.Success(result.value, attempt)
+            }
+            is AttemptResult.Failure -> {
+                observer.onAttemptFailed(spec.name, attempt, result.failure)
+                publishTerminal(attempt, result.failure)
+            }
+        }
+    }
+
+    private fun publishTerminal(attempt: Int, failure: RequestFailure) {
+        val decision = decider.decide(failure, spec, attempt)
+        lastRetryAfter = (failure as? RequestFailure.Http)?.retryAfter
+        observer.onFinished(
+            spec.name,
+            if (decision.recovery == RecoveryAction.Retry) OperationResult.RETRYABLE else OperationResult.TERMINAL,
         )
+        _state.value = RetryUiState.Feedback(
+            failure = decision.publicFailure,
+            recovery = decision.recovery,
+            attemptsUsed = attempt,
+            maxAttempts = spec.maxAttempts,
+            serverMessage = decision.serverMessage,
+        )
+    }
+
+    private fun secondsRemaining(remaining: Duration): Int =
+        remaining.inWholeMilliseconds.coerceAtLeast(1).let { ms -> ((ms + 999) / 1000).toInt() }
+
+    private companion object {
+        /** Never wait longer than this on a server-supplied `Retry-After`, however large it asks. */
+        val RETRY_AFTER_CAP = 30.seconds
     }
 }

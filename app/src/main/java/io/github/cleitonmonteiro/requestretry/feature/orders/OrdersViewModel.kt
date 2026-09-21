@@ -7,6 +7,8 @@ import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetOrdersUseCase
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
@@ -45,7 +47,10 @@ class OrdersViewModel @Inject constructor(
     retryControllers: RetryControllerFactory,
 ) : ViewModel() {
 
-    private val controller = retryControllers.create(viewModelScope) { getOrders() }
+    private val controller = retryControllers.create(
+        viewModelScope,
+        OperationSpec.read(OperationName.ORDERS),
+    ) { getOrders() }
     private val _effects = Channel<OrdersEffect>(Channel.BUFFERED)
 
     val state: StateFlow<OrdersUiState> = combine(

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is permitted only in debug builds, where the app talks to the mocked Node server over
+  plain HTTP at 10.0.2.2:8090 (the emulator's alias for the host's loopback interface) — see
+  data/remote/ApiConfig.kt. src/release keeps its own copy with cleartextTrafficPermitted="false".
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

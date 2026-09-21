@@ -7,6 +7,8 @@ import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
+import io.github.cleitonmonteiro.requestretry.retry.OperationName
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.RetryControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.RetryUiState
 import javax.inject.Inject
@@ -40,7 +42,10 @@ class ProfileViewModel @Inject constructor(
     retryControllers: RetryControllerFactory,
 ) : ViewModel() {
 
-    private val controller = retryControllers.create(viewModelScope) { getProfile() }
+    private val controller = retryControllers.create(
+        viewModelScope,
+        OperationSpec.read(OperationName.PROFILE),
+    ) { getProfile() }
     private val _effects = Channel<ProfileEffect>(Channel.BUFFERED)
 
     val state: StateFlow<ProfileUiState> = combine(

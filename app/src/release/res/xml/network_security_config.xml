@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release never permits cleartext traffic — HTTPS is mandatory outside the debug/local demo
+  environment. See src/debug's copy of this file and plan §12.4.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
