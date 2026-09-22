@@ -14,7 +14,6 @@ object OperationProfiles {
         safety = OperationSafety.READ_ONLY,
         maxAttempts = 3,
         backoff = backoff,
-        concurrency = ConcurrencyPolicy.CANCEL_PREVIOUS,
     )
 
     fun foregroundIdempotentCommand(
@@ -27,6 +26,5 @@ object OperationProfiles {
         safety = OperationSafety.IDEMPOTENT_COMMAND,
         maxAttempts = 3,
         backoff = backoff,
-        concurrency = ConcurrencyPolicy.DROP_WHILE_RUNNING,
     )
 }

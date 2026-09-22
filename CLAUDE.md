@@ -23,9 +23,11 @@ The mock starts with `cd server && npm start`. The emulator reaches it at
 
 The app intentionally has only two journeys:
 
-- Profile GET is a disposable foreground read with at most three manual attempts and `CANCEL_PREVIOUS`.
+- Profile GET is a disposable foreground read with at most three manual attempts and cancels any
+  previous execution when started again.
 - Create Order is a foreground idempotent command with a stable `OperationId` and
-  `IdempotencyKey`, at most three manual attempts, and `DROP_WHILE_RUNNING`.
+  `IdempotencyKey`, at most three manual attempts, and cancels any previous execution when started
+  again.
 
 Create Order keeps its immutable submitted snapshot for retries and foreground status verification.
 It does not survive process death: Room, WorkManager, and background reconciliation are out of
@@ -50,10 +52,10 @@ installed and OkHttp connection retry is disabled.
 results with a session token. It models running, cooldown, success, failure, and unknown outcome
 explicitly.
 
-`OperationSpec` has only operation identity/name, read-vs-idempotent safety, attempts, backoff,
-and one of the two supported concurrency policies. Do not reintroduce queue,
-join, reject, retry-budget, circuit-breaker, bulkhead, automatic-auth-refresh, or background-sync
-abstractions into this study app.
+`OperationSpec` has only operation identity/name, read-vs-idempotent safety, attempts, and backoff.
+The controller always cancels a previous execution when a new start arrives. Do not reintroduce
+queue, join, reject, retry-budget, circuit-breaker, bulkhead, automatic-auth-refresh, or
+background-sync abstractions into this study app.
 
 ## Boundaries and tests
 
@@ -67,5 +69,5 @@ abstractions into this study app.
   lifecycle-aware effects. Scenario changes reload Profile only and never replay Create Order.
 - JVM tests use JUnit4, virtual coroutine time, fakes, and Ktor `MockEngine`; no Hilt graph or
   mocking library. Cover the typed failure matrix, backoff, cancellation, stale
-  results, both concurrency policies, stable request identity, unknown outcome, and foreground
+  results, cancellation of previous executions, stable request identity, unknown outcome, and foreground
   status verification.

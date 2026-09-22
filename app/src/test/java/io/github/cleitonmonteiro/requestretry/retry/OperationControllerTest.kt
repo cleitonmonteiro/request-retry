@@ -20,7 +20,7 @@ import org.junit.Test
 
 class OperationControllerTest {
     @Test
-    fun `concurrent starts are serialized and drop while running prevents duplicate effect`() = runTest {
+    fun `concurrent starts cancel previous executions`() = runTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
         val controller = controller(
@@ -44,7 +44,7 @@ class OperationControllerTest {
         release.complete(Unit)
         runCurrent()
         val success = controller.state.value as OperationState.Succeeded
-        assertEquals("payload-0", success.data)
+        assertEquals("payload-19", success.data)
     }
 
     @Test

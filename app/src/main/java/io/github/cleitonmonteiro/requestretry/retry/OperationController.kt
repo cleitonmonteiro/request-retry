@@ -125,13 +125,8 @@ class OperationController<I, O>(
             begin(input, specFactory.create(input), attempt = 1)
             return
         }
-        when (requireNotNull(current).spec.concurrency) {
-            ConcurrencyPolicy.CANCEL_PREVIOUS -> {
-                executionJob?.cancel()
-                begin(input, specFactory.create(input), attempt = 1)
-            }
-            ConcurrencyPolicy.DROP_WHILE_RUNNING -> Unit
-        }
+        executionJob?.cancel()
+        begin(input, specFactory.create(input), attempt = 1)
     }
 
     private fun begin(input: I, spec: OperationSpec, attempt: Int) {

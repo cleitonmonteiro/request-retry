@@ -11,9 +11,6 @@ data class OperationName(val value: String)
 /** Declares whether repeating an operation can be made safe by its stable identity. */
 enum class OperationSafety { READ_ONLY, IDEMPOTENT_COMMAND }
 
-/** Defines how a controller handles a start request while an operation is active. */
-enum class ConcurrencyPolicy { CANCEL_PREVIOUS, DROP_WHILE_RUNNING }
-
 /** Immutable, validated execution policy for one logical operation. */
 data class OperationSpec(
     val operationId: OperationId,
@@ -21,7 +18,6 @@ data class OperationSpec(
     val safety: OperationSafety,
     val maxAttempts: Int,
     val backoff: BackoffStrategy,
-    val concurrency: ConcurrencyPolicy,
 ) {
     init {
         require(maxAttempts >= 1) { "maxAttempts must be at least 1" }
