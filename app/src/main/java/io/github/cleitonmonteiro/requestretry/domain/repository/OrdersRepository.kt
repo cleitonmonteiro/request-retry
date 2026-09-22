@@ -6,6 +6,7 @@ import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import kotlinx.coroutines.flow.Flow
 
+/** Domain contract for order creation and authoritative operation-status lookup. */
 interface OrdersRepository {
     fun createOrder(request: NewOrderRequest): Flow<Order>
     fun getOperationStatus(operationId: OperationId): Flow<OrderOperationStatus>

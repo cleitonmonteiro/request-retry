@@ -27,17 +27,20 @@ data class ProfileUiState(
     val scenario: Scenario,
 )
 
+/** All user actions accepted by the profile feature. */
 sealed interface ProfileIntent {
     data object Retry : ProfileIntent
     data object Leave : ProfileIntent
     data class SelectScenario(val scenario: Scenario) : ProfileIntent
 }
 
+/** One-off navigation events emitted by the profile feature. */
 sealed interface ProfileEffect {
     data object NavigateBack : ProfileEffect
 }
 
 @HiltViewModel
+/** Owns profile loading, scenario selection, and manual retry commands for the screen. */
 class ProfileViewModel @Inject constructor(
     private val getProfile: GetProfileUseCase,
     private val scenarios: ScenarioHolder,

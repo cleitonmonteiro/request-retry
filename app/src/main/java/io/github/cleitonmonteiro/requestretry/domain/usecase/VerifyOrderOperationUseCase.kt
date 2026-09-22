@@ -6,6 +6,7 @@ import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.single
 
+/** Queries the server to resolve an order whose submission outcome was uncertain. */
 class VerifyOrderOperationUseCase @Inject constructor(
     private val repository: OrdersRepository,
 ) {

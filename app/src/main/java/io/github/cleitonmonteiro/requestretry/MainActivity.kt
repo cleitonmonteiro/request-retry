@@ -19,6 +19,7 @@ import io.github.cleitonmonteiro.requestretry.ui.components.AppTopBar
 import io.github.cleitonmonteiro.requestretry.ui.theme.RequestRetryTheme
 
 @AndroidEntryPoint
+/** Hosts the Compose navigation graph and the app-wide top bar. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

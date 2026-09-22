@@ -2,6 +2,7 @@ package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 
+/** Builds the validated resilience profiles used by foreground operations. */
 object OperationProfiles {
     fun foregroundRead(
         name: OperationName,

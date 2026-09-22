@@ -35,6 +35,7 @@ sealed interface RequestFailure {
     data class Unknown(val diagnosticCode: String) : RequestFailure
 }
 
+/** Network phase in which a transport timeout was observed. */
 enum class TimeoutStage {
     CONNECT,
     REQUEST_BODY,
@@ -43,6 +44,7 @@ enum class TimeoutStage {
     OVERALL,
 }
 
+/** Whether a failed request might already have reached the remote server. */
 enum class OutcomeCertainty {
     NOT_SENT,
     MAY_HAVE_REACHED_SERVER,

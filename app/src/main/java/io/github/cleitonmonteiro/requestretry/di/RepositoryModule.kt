@@ -11,6 +11,7 @@ import io.github.cleitonmonteiro.requestretry.domain.repository.ProfileRepositor
 
 @Module
 @InstallIn(SingletonComponent::class)
+/** Connects domain repository contracts to their remote-backed implementations. */
 abstract class RepositoryModule {
 
     @Binds

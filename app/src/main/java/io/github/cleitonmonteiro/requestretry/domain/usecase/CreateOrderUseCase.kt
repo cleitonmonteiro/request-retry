@@ -6,6 +6,7 @@ import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 
+/** Delegates an idempotent create-order command to the domain repository. */
 class CreateOrderUseCase @Inject constructor(
     private val repository: OrdersRepository,
 ) {

@@ -3,6 +3,7 @@ package io.github.cleitonmonteiro.requestretry.retry
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 
+/** Creates controllers that share the injected failure policy and telemetry observer. */
 class OperationControllerFactory @Inject constructor(
     private val failureClassifier: FailureClassifier,
     private val retryDecider: RetryDecider,

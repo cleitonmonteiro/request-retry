@@ -5,6 +5,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import javax.inject.Inject
 
+/** Performs the profile endpoint and returns its wire-shaped response. */
 class ProfileRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val apiClient: ApiClient,

@@ -8,6 +8,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+/** Maps the profile endpoint response to the domain model in a cold flow. */
 class ProfileRepositoryImpl @Inject constructor(
     private val remote: ProfileRemoteDataSource,
 ) : ProfileRepository {

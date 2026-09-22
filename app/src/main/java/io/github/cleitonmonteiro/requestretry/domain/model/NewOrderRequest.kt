@@ -1,5 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.domain.model
 
+/** Immutable command to create an order, including the stable identities used for safe replay. */
 data class NewOrderRequest(
     val itemName: String,
     val quantity: Int,

@@ -14,6 +14,7 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
+/** Supplies the resilience policies and payload-free retry telemetry observer. */
 object RetryModule {
     @Provides
     @Singleton

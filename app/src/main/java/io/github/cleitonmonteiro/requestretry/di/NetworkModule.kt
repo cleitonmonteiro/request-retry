@@ -20,6 +20,7 @@ import java.util.UUID
 
 @Module
 @InstallIn(SingletonComponent::class)
+/** Supplies the shared HTTP client with correlation IDs and safe debug logging. */
 object NetworkModule {
 
     @Provides

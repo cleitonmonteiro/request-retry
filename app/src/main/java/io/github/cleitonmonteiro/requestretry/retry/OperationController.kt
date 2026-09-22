@@ -10,10 +10,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** Creates the immutable operation policy from the submitted input snapshot. */
 fun interface OperationSpecFactory<in I> {
     fun create(input: I): OperationSpec
 }
 
+/** Result of asking the server to confirm an operation with an uncertain outcome. */
 sealed interface VerificationResult<out T> {
     data class Confirmed<T>(val data: T) : VerificationResult<T>
     data class Rejected(val failure: PublicFailure, val recovery: RecoveryAction) : VerificationResult<Nothing>
@@ -21,14 +23,17 @@ sealed interface VerificationResult<out T> {
     data object Unknown : VerificationResult<Nothing>
 }
 
+/** Confirms an ambiguous remote mutation without issuing the mutation again. */
 fun interface StatusVerifier<in I, out O> {
     suspend fun verify(input: I): VerificationResult<O>
 }
 
+/** Provides wall-clock time so controller state remains testable. */
 fun interface WallClock {
     fun now(): Instant
 }
 
+/** Production [WallClock] backed by the system clock. */
 object SystemWallClock : WallClock {
     override fun now(): Instant = Instant.now()
 }
@@ -45,6 +50,7 @@ class OperationController<I, O>(
     private val verifier: StatusVerifier<I, O>? = null,
     private val wallClock: WallClock = SystemWallClock,
 ) {
+    /** Immutable command snapshot that prevents retries from observing later form edits. */
     private data class Session<I>(
         val token: Long,
         val input: I,

@@ -10,6 +10,7 @@ import io.github.cleitonmonteiro.requestretry.feature.home.HomeIntent
 import io.github.cleitonmonteiro.requestretry.feature.home.HomeScreen
 import io.github.cleitonmonteiro.requestretry.feature.profile.ProfileRoute
 
+/** Internal route names used by the app's small navigation graph. */
 internal object Routes {
     const val HOME = "home"
     const val PROFILE = "profile"

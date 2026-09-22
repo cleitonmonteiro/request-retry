@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+/** Navigation actions available from the app's landing screen. */
 sealed interface HomeIntent {
     data object OpenProfile : HomeIntent
     data object OpenCreateOrder : HomeIntent

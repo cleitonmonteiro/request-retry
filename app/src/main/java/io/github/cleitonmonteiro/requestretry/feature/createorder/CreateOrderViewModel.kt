@@ -49,8 +49,10 @@ data class CreateOrderUiState(
     val validationError: OrderValidationError?,
 )
 
+/** Validation failures that can be shown next to the editable order fields. */
 enum class OrderValidationError { ITEM_REQUIRED, QUANTITY_MUST_BE_POSITIVE }
 
+/** All user actions accepted by the create-order feature. */
 sealed interface CreateOrderIntent {
     data object Submit : CreateOrderIntent
     data object Retry : CreateOrderIntent
@@ -63,6 +65,7 @@ sealed interface CreateOrderIntent {
     data class SelectScenario(val scenario: Scenario) : CreateOrderIntent
 }
 
+/** One-off effects emitted after an order result or a leave request. */
 sealed interface CreateOrderEffect {
     data class ShowOrderCreated(val orderId: String) : CreateOrderEffect
     data object NavigateBack : CreateOrderEffect

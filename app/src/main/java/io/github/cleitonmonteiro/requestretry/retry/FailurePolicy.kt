@@ -10,6 +10,7 @@ import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 
+/** Converts thrown transport errors into the app's stable [RequestFailure] vocabulary. */
 object DefaultFailureClassifier : FailureClassifier {
     override fun classify(error: Throwable): RequestFailure {
         if (error is CancellationException) throw error
@@ -40,26 +41,32 @@ object DefaultFailureClassifier : FailureClassifier {
     }
 }
 
+/** Inputs used to decide whether an unsuccessful logical attempt can be retried. */
 data class RetryContext(
     val spec: OperationSpec,
     val failure: RequestFailure,
     val attempt: Int,
 )
 
+/** Internal result of applying the retry policy to one classified failure. */
 sealed interface RetryDecision {
+    /** Permits a user-initiated next attempt after the requested cooldown. */
     data class Retry(
         val failure: PublicFailure,
         val reason: RetryReason,
         val serverDelay: Duration? = null,
     ) : RetryDecision
+    /** Ends the operation with safe public feedback and a recovery action. */
     data class Stop(val failure: PublicFailure, val recovery: RecoveryAction) : RetryDecision
     data object VerifyStatus : RetryDecision
 }
 
+/** Applies operation safety and attempt limits to a classified failure. */
 fun interface RetryDecider {
     fun decide(context: RetryContext): RetryDecision
 }
 
+/** Fail-closed policy that allows retries only for explicitly transient failures. */
 object ConservativeRetryDecider : RetryDecider {
     override fun decide(context: RetryContext): RetryDecision {
         val spec = context.spec

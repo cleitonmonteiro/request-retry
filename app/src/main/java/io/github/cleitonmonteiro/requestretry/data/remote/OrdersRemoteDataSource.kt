@@ -10,6 +10,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import javax.inject.Inject
 
+/** Performs the order endpoints while leaving mapping and retry policy to higher layers. */
 class OrdersRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val apiClient: ApiClient,

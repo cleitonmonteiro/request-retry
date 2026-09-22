@@ -12,6 +12,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+/** Maps remote order responses to domain models through cold repository flows. */
 class OrdersRepositoryImpl @Inject constructor(
     private val remote: OrdersRemoteDataSource,
 ) : OrdersRepository {
