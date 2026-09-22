@@ -92,7 +92,7 @@ class RetryExecutorTest {
     private fun readSpec(
         backoff: BackoffStrategy = FixedBackoff(Duration.ZERO),
     ): OperationSpec = OperationProfiles.foregroundRead(
-        OperationName.PROFILE_READ,
+        OperationName("profile_read"),
         OperationId("operation"),
         backoff,
     )

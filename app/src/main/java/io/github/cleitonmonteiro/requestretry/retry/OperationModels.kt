@@ -5,11 +5,8 @@ import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import java.time.Instant
 import kotlin.time.Duration
 
-/** Stable names used to select a retry profile and label sanitized telemetry. */
-enum class OperationName {
-    PROFILE_READ,
-    CREATE_ORDER,
-}
+/** Stable name used to select a retry profile and label sanitized telemetry. */
+data class OperationName(val value: String)
 
 /** Declares whether repeating an operation can be made safe by its stable identity. */
 enum class OperationSafety { READ_ONLY, IDEMPOTENT_COMMAND }

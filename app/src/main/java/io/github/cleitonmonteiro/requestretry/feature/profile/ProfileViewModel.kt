@@ -49,7 +49,9 @@ class ProfileViewModel @Inject constructor(
 
     private val controller = operationControllers.create(
         scope = viewModelScope,
-        specFactory = OperationSpecFactory<Unit> { OperationProfiles.foregroundRead(OperationName.PROFILE_READ) },
+        specFactory = OperationSpecFactory<Unit> {
+            OperationProfiles.foregroundRead(OperationName("profile_read"))
+        },
     ) { _, _ -> getProfile().single() }
     private val _effects = Channel<ProfileEffect>(Channel.BUFFERED)
 

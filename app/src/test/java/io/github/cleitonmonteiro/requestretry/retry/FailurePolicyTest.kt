@@ -11,7 +11,7 @@ import org.junit.Test
 
 class FailurePolicyTest {
     private val readSpec = OperationProfiles.foregroundRead(
-        OperationName.PROFILE_READ,
+        OperationName("profile_read"),
         OperationId("read"),
         FixedBackoff(1.seconds),
     )
@@ -66,7 +66,7 @@ class FailurePolicyTest {
     @Test
     fun `ambiguous idempotent command verifies instead of retrying`() {
         val spec = OperationProfiles.foregroundIdempotentCommand(
-            name = OperationName.CREATE_ORDER,
+            name = OperationName("create_order"),
             operationId = OperationId("command"),
             backoff = FixedBackoff(1.seconds),
         ).copy(maxAttempts = 1)

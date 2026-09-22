@@ -26,7 +26,7 @@ class OperationControllerTest {
         val controller = controller(
             scope = backgroundScope,
             spec = OperationProfiles.foregroundIdempotentCommand(
-                OperationName.CREATE_ORDER,
+                OperationName("create_order"),
                 OperationId("command"),
                 backoff = FixedBackoff(Duration.ZERO),
             ),
@@ -55,7 +55,7 @@ class OperationControllerTest {
             scope = backgroundScope,
             specFactory = OperationSpecFactory<Input> {
                 OperationProfiles.foregroundRead(
-                    OperationName.PROFILE_READ,
+                    OperationName("profile_read"),
                     OperationId("snapshot"),
                     FixedBackoff(Duration.ZERO),
                 ).copy(maxAttempts = 1)
@@ -78,7 +78,7 @@ class OperationControllerTest {
         val controller = controller(
             scope = backgroundScope,
             spec = OperationProfiles.foregroundRead(
-                OperationName.PROFILE_READ,
+                OperationName("profile_read"),
                 backoff = FixedBackoff(Duration.ZERO),
             ),
         ) { input ->
@@ -104,7 +104,7 @@ class OperationControllerTest {
             scope = backgroundScope,
             specFactory = OperationSpecFactory<String> {
                 OperationProfiles.foregroundIdempotentCommand(
-                    OperationName.CREATE_ORDER,
+                    OperationName("create_order"),
                     OperationId("unknown"),
                     backoff = FixedBackoff(Duration.ZERO),
                 ).copy(maxAttempts = 1)
@@ -141,7 +141,7 @@ class OperationControllerTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
         val spec = OperationProfiles.foregroundRead(
-            OperationName.PROFILE_READ,
+            OperationName("profile_read"),
             OperationId("manual-retry"),
             FixedBackoff(Duration.ZERO),
         ).copy(maxAttempts = 3)
@@ -167,7 +167,7 @@ class OperationControllerTest {
     @Test
     fun `third transient failure ends the manual retry session`() = runTest {
         val spec = OperationProfiles.foregroundRead(
-            OperationName.PROFILE_READ,
+            OperationName("profile_read"),
             OperationId("manual-limit"),
             FixedBackoff(Duration.ZERO),
         ).copy(maxAttempts = 3)

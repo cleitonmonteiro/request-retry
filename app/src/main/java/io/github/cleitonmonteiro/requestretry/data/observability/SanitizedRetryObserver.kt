@@ -13,25 +13,25 @@ import javax.inject.Inject
 /** Debug-only, payload-free observer. Production can replace this binding with metrics/tracing. */
 class SanitizedRetryObserver @Inject constructor() : RetryObserver {
     override fun onOperationStarted(context: OperationTelemetryContext) = log(
-        "operation_started name=${context.operationName} max_attempts=${context.maxAttempts}",
+        "operation_started name=${context.operationName.value} max_attempts=${context.maxAttempts}",
     )
 
     override fun onAttemptStarted(context: AttemptTelemetryContext) = log(
-        "attempt_started name=${context.operationName} attempt=${context.attempt}",
+        "attempt_started name=${context.operationName.value} attempt=${context.attempt}",
     )
 
     override fun onAttemptFinished(result: AttemptTelemetryResult) = log(
-        "attempt_finished name=${result.operationName} attempt=${result.attempt} " +
+        "attempt_finished name=${result.operationName.value} attempt=${result.attempt} " +
             "success=${result.succeeded} category=${result.failureCategory}",
     )
 
     override fun onRetryScheduled(event: RetryScheduledEvent) = log(
-        "retry_scheduled name=${event.operationName} next=${event.nextAttempt} " +
+        "retry_scheduled name=${event.operationName.value} next=${event.nextAttempt} " +
             "delay_ms=${event.delay.inWholeMilliseconds} reason=${event.reason::class.simpleName}",
     )
 
     override fun onOperationFinished(result: OperationTelemetryResult) = log(
-        "operation_finished name=${result.operationName} outcome=${result.outcome} " +
+        "operation_finished name=${result.operationName.value} outcome=${result.outcome} " +
             "attempts=${result.attemptsUsed}",
     )
 

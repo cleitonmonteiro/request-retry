@@ -91,7 +91,7 @@ class CreateOrderViewModel @Inject constructor(
         scope = viewModelScope,
         specFactory = OperationSpecFactory<NewOrderRequest> { request ->
             OperationProfiles.foregroundIdempotentCommand(
-                name = OperationName.CREATE_ORDER,
+                name = OperationName("create_order"),
                 operationId = request.operationId,
             )
         },
