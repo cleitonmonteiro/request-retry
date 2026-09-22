@@ -2,10 +2,9 @@
 
 Status: accepted with preliminary values.
 
-Reads use `CancelPrevious` and bounded automatic retry. Idempotent commands use
-`DropWhileRunning`, stable identity, persistence, and status verification. Unsafe commands receive
-one attempt and no generic automatic retry. Polling and background synchronization remain distinct
-components rather than pretending to be one-shot calls.
+Reads use `CancelPrevious` and three total manual attempts separated by full-jitter cooldown.
+Idempotent commands use `DropWhileRunning`, stable identity, and foreground status
+verification. Unsafe commands, polling, and background synchronization are outside this study app.
 
 All durations and attempt counts are validated by `OperationSpec`; production numbers require
 latency and capacity data.

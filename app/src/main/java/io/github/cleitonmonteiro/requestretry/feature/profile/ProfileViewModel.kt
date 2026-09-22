@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.stateIn
 
-/** The screen's single, immutable source of truth — see [feature.picker.PickerUiState] for why. */
+/** The screen's single, immutable source of truth. */
 data class ProfileUiState(
     val request: OperationState<UserProfile>,
     val scenario: Scenario,

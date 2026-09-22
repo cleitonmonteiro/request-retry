@@ -8,7 +8,6 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.domain.usecase.ScheduleOrderReconciliationUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
 import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
@@ -42,7 +41,7 @@ data class OrderFormInput(
     val customerName: String = "",
 )
 
-/** The screen's single, immutable source of truth — see [feature.picker.PickerUiState] for why. */
+/** The screen's single, immutable source of truth. */
 data class CreateOrderUiState(
     val input: OrderFormInput,
     val result: OperationState<Order>,
@@ -80,7 +79,6 @@ sealed interface CreateOrderEffect {
 class CreateOrderViewModel @Inject constructor(
     private val createOrder: CreateOrderUseCase,
     verifyOrder: VerifyOrderOperationUseCase,
-    private val scheduleReconciliation: ScheduleOrderReconciliationUseCase,
     private val scenarios: ScenarioHolder,
     operationControllers: OperationControllerFactory,
 ) : ViewModel() {
@@ -92,7 +90,6 @@ class CreateOrderViewModel @Inject constructor(
             OperationProfiles.foregroundIdempotentCommand(
                 name = OperationName.CREATE_ORDER,
                 operationId = request.operationId,
-                idempotencyKey = request.idempotencyKey,
             )
         },
         verifier = StatusVerifier { request ->
@@ -132,11 +129,6 @@ class CreateOrderViewModel @Inject constructor(
             controller.state
                 .filterIsInstance<OperationState.Succeeded<Order>>()
                 .collect { _effects.send(CreateOrderEffect.ShowOrderCreated(it.data.id)) }
-        }
-        viewModelScope.launch {
-            controller.state
-                .filterIsInstance<OperationState.OutcomeUnknown>()
-                .collect { scheduleReconciliation(it.operationId) }
         }
     }
 

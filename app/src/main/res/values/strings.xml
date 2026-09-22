@@ -27,12 +27,6 @@
     <string name="failure_protocol_description">The response could not be safely processed.</string>
     <string name="failure_timeout_title">Request timed out</string>
     <string name="failure_timeout_description">The operation did not finish within its time limit.</string>
-    <string name="failure_deadline_title">Operation time limit reached</string>
-    <string name="failure_deadline_description">No more attempts were started after the operation deadline.</string>
-    <string name="failure_budget_title">Retries temporarily limited</string>
-    <string name="failure_budget_description">Retry traffic is being limited to protect the service.</string>
-    <string name="failure_circuit_title">Service protection active</string>
-    <string name="failure_circuit_description">Requests are paused briefly while the service recovers.</string>
     <string name="failure_unknown_title">Something went wrong</string>
     <string name="failure_unknown_description">The request could not be completed safely.</string>
     <string name="outcome_unknown_title">Confirmation pending</string>

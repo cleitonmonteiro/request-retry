@@ -30,23 +30,19 @@ items:
       seq: 2
     items:
       - info:
-          name: List Orders
-          type: http
-          seq: 1
-        http:
-          method: GET
-          url: "{{baseUrl}}/orders"
-
-      - info:
           name: Create Order
           type: http
-          seq: 2
+          seq: 1
         http:
           method: POST
           url: "{{baseUrl}}/orders"
           headers:
             - name: Content-Type
               value: application/json
+            - name: X-Operation-ID
+              value: 0e26f9fd-2c17-47bf-89b7-47c54ec897ea
+            - name: Idempotency-Key
+              value: 4e3d1cc1-3ecb-4335-89e4-0fae2328dd72
           body:
             type: json
             data: |-
@@ -57,26 +53,9 @@ items:
               }
 
   - info:
-      name: Items
-      type: folder
+      name: Verify Order Operation
+      type: http
       seq: 3
-    items:
-      - info:
-          name: List Items
-          type: http
-          seq: 1
-        http:
-          method: GET
-          url: "{{baseUrl}}/items"
-
-      - info:
-          name: Send Item
-          type: http
-          seq: 2
-        http:
-          method: POST
-          url: "{{baseUrl}}/items/:itemId/send"
-          params:
-            - name: itemId
-              value: I-1
-              type: path
+    http:
+      method: GET
+      url: "{{baseUrl}}/operations/0e26f9fd-2c17-47bf-89b7-47c54ec897ea"

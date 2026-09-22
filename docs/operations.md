@@ -1,23 +1,15 @@
-# Operation catalogue and preliminary service levels
+# Operation catalogue
 
-These values are engineering defaults for the study project. Production values require approval
-from product, backend, security, and SRE.
-
-| Operation | Profile | Survives UI/process | Identity | Preliminary limit |
+| Operation | Profile | Survives process | Identity | Limit |
 |---|---|---:|---|---|
-| Profile GET | Foreground read | No | generated local operation ID | 3 attempts, 5 s each, 20 s total |
-| Orders GET | Foreground read | No | generated local operation ID | 3 attempts, 5 s each, 20 s total |
-| Items GET | Foreground read | No | generated local operation ID | 3 attempts, 5 s each, 20 s total |
-| Send item | Unsafe foreground command | No | generated local operation ID | 1 attempt, no automatic retry |
-| Create order | Idempotent foreground command | Yes | operation ID + idempotency key | 3 attempts, 8 s each, 30 s total |
-| Order status | Reconciliation query | Yes | original operation ID | WorkManager unique work, at most 5 worker runs |
+| Profile GET | Foreground read | No | generated operation ID | 3 manual attempts with full-jitter cooldown |
+| Create order | Idempotent foreground command | No | operation ID + idempotency key | 3 manual attempts with full-jitter cooldown |
+| Order status | Foreground verification query | No | original operation ID | one explicit user action |
 
-The Ktor/OkHttp layer never retries. `RetryExecutor` owns every business-request retry. Leaving a
-screen cancels disposable reads with the ViewModel; a persisted Create Order remains queryable and
-is reconciled using unique WorkManager work. The mock persists idempotency records in
-`server/.operations.json`; production still requires an atomic, durable backend store and an
-approved retention policy.
+The Ktor/OkHttp layer never retries; `RetryExecutor` owns retry cooldown and never repeats a
+business request without a user action. A Create Order response with ambiguous delivery becomes
+`OutcomeUnknown` and can be verified while its ViewModel session is alive. The app does not persist
+operations or schedule background work.
 
-External decisions still open: production SLOs, telemetry backend, feature-flag provider,
-authentication/token contract, encryption policy for persisted request fields, logout/user-switch
-rules, and rollback thresholds.
+The mock persists idempotency records in `server/.operations.json`, but production would need an
+atomic durable backend store, retention, and tenant/security policies.

@@ -4,8 +4,6 @@ package io.github.cleitonmonteiro.requestretry.feature.createorder
 
 import app.cash.turbine.test
 import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
-import io.github.cleitonmonteiro.requestretry.FakeOrderOperationStore
-import io.github.cleitonmonteiro.requestretry.FakeOrderReconciliationScheduler
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.NewOrderRequestDto
 import io.github.cleitonmonteiro.requestretry.data.remote.OrdersRemoteDataSource
@@ -14,7 +12,6 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.repository.OrdersRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.domain.usecase.ScheduleOrderReconciliationUseCase
 import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
 import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
@@ -91,7 +88,7 @@ class CreateOrderViewModelTest {
     }
 
     @Test
-    fun `automatic retries resend the submitted snapshot with stable identity`() = runTest {
+    fun `manual retries resend the submitted snapshot with stable identity`() = runTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
         val capturedBodies = mutableListOf<String>()
@@ -107,6 +104,14 @@ class CreateOrderViewModelTest {
         // Editing live form state cannot change the immutable session that was just submitted.
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Something else"))
         viewModel.onIntent(CreateOrderIntent.ChangeQuantity("99"))
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.result is OperationState.Failed)
+
+        viewModel.onIntent(CreateOrderIntent.Retry)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.result is OperationState.Failed)
+
+        viewModel.onIntent(CreateOrderIntent.Retry)
         advanceUntilIdle()
 
         assertEquals(3, capturedBodies.size)
@@ -136,7 +141,7 @@ class CreateOrderViewModelTest {
         check(viewModel.state.value.result is OperationState.Succeeded)
 
         // Act: tap a scenario chip after the order was already created
-        viewModel.onIntent(CreateOrderIntent.SelectScenario(Scenario.ALWAYS_FAIL))
+        viewModel.onIntent(CreateOrderIntent.SelectScenario(Scenario.CONNECTION_ERROR))
         advanceUntilIdle()
 
         // Assert: POST /orders is not idempotent — a scenario change must never replay it
@@ -145,24 +150,29 @@ class CreateOrderViewModelTest {
             Order(id = "A-2000", item = "Backpack", total = 59.97),
             (viewModel.state.value.result as OperationState.Succeeded).data,
         )
-        assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
+        assertEquals(Scenario.CONNECTION_ERROR, viewModel.state.value.scenario)
     }
 
     @Test
-    fun `lost responses become outcome unknown and reconcile without a new mutation`() = runTest {
+    fun `lost responses become outcome unknown and verify without a new mutation`() = runTest {
         val scenarios = ScenarioHolder().apply { select(Scenario.RESPONSE_LOST_AFTER_COMMIT) }
         val capturedBodies = mutableListOf<String>()
-        val scheduler = FakeOrderReconciliationScheduler()
-        val viewModel = newViewModel(scenarios, capturedBodies, scheduler = scheduler) {
+        val viewModel = newViewModel(scenarios, capturedBodies) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"19.99"}"""
         }
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
         viewModel.onIntent(CreateOrderIntent.Submit)
         advanceUntilIdle()
 
+        assertTrue(viewModel.state.value.result is OperationState.Failed)
+        viewModel.onIntent(CreateOrderIntent.Retry)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.result is OperationState.Failed)
+        viewModel.onIntent(CreateOrderIntent.Retry)
+        advanceUntilIdle()
+
         assertTrue(viewModel.state.value.result is OperationState.OutcomeUnknown)
         assertEquals(3, capturedBodies.size)
-        assertEquals(1, scheduler.scheduled.size)
 
         scenarios.select(Scenario.ALWAYS_SUCCEED)
         viewModel.onIntent(CreateOrderIntent.VerifyStatus)
@@ -180,7 +190,6 @@ class CreateOrderViewModelTest {
         capturedBodies: MutableList<String>,
         capturedKeys: MutableList<String> = mutableListOf(),
         capturedOperationIds: MutableList<String> = mutableListOf(),
-        scheduler: FakeOrderReconciliationScheduler = FakeOrderReconciliationScheduler(),
         respondBody: () -> String,
     ): CreateOrderViewModel {
         val engineConfig = MockEngineConfig().apply {
@@ -210,11 +219,9 @@ class CreateOrderViewModelTest {
             }
         }
         val repository = OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient(scenarios)))
-        val store = FakeOrderOperationStore()
         return CreateOrderViewModel(
-            createOrder = CreateOrderUseCase(repository, store),
-            verifyOrder = VerifyOrderOperationUseCase(repository, store),
-            scheduleReconciliation = ScheduleOrderReconciliationUseCase(store, scheduler),
+            createOrder = CreateOrderUseCase(repository),
+            verifyOrder = VerifyOrderOperationUseCase(repository),
             scenarios = scenarios,
             operationControllers = OperationControllerFactory(),
         )

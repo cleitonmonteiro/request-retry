@@ -43,20 +43,6 @@ function fingerprint(body) {
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
-const items = [
-  { item_id: 'I-1', item_name: 'Backpack' },
-  { item_id: 'I-2', item_name: 'Water bottle' },
-  { item_id: 'I-3', item_name: 'Notebook' },
-];
-
-// One send-response action per item, so the demo exercises all three SDUI action types.
-// `label` is the button text — the client renders it as-is, it never hardcodes copy per type.
-const sendActionByItemId = {
-  'I-1': { action_type: 'deeplink', target: 'requestretry://orders', label: 'View orders' },
-  'I-2': { action_type: 'external_link', target: 'https://example.com/track/I-2', label: 'Track shipment' },
-  'I-3': { action_type: 'close', label: 'Done' },
-};
-
 function sendJson(res, status, body, requestId = crypto.randomUUID()) {
   const json = JSON.stringify(body);
   const headers = { 'Content-Type': 'application/json', 'X-Request-ID': requestId };
@@ -82,9 +68,6 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/profile') {
     return sendJson(res, 200, profile);
-  }
-  if (req.method === 'GET' && url.pathname === '/orders') {
-    return sendJson(res, 200, orders);
   }
   if (req.method === 'POST' && url.pathname === '/orders') {
     const idempotencyKey = req.headers['idempotency-key'];
@@ -152,16 +135,6 @@ const server = http.createServer((req, res) => {
       error_code: operation.error_code,
     });
   }
-  if (req.method === 'GET' && url.pathname === '/items') {
-    return sendJson(res, 200, items);
-  }
-  const sendMatch = req.method === 'POST' && url.pathname.match(/^\/items\/([^/]+)\/send$/);
-  if (sendMatch) {
-    const itemId = sendMatch[1];
-    const action = sendActionByItemId[itemId] || { action_type: 'close', label: 'Done' };
-    return sendJson(res, 200, { item_id: itemId, action });
-  }
-
   sendJson(res, 404, { error: `No mocked route for ${req.method} ${url.pathname}` });
 });
 

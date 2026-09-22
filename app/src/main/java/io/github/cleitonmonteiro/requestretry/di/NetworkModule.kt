@@ -9,7 +9,6 @@ import dagger.hilt.components.SingletonComponent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
@@ -30,17 +29,10 @@ object NetworkModule {
         engine {
             config { retryOnConnectionFailure(false) }
         }
-        install(HttpTimeout) {
-            connectTimeoutMillis = 5_000
-            socketTimeoutMillis = 8_000
-            requestTimeoutMillis = 10_000
-        }
         defaultRequest {
             headers.append("X-Correlation-ID", UUID.randomUUID().toString())
         }
         install(ContentNegotiation) {
-            // coerceInputValues: an unrecognized enum value (e.g. a future ActionTypeDto the
-            // server added) decodes to its default instead of throwing — see ActionDto's doc.
             json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
         }
         install(Logging) {

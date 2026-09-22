@@ -64,13 +64,12 @@ class FailurePolicyTest {
     }
 
     @Test
-    fun `ambiguous unsafe command verifies instead of retrying`() {
-        val spec = OperationProfiles.foregroundUnsafeCommand(
-            name = OperationName.ITEM_SEND,
-            operationId = OperationId("unsafe"),
-            statusVerificationAvailable = true,
+    fun `ambiguous idempotent command verifies instead of retrying`() {
+        val spec = OperationProfiles.foregroundIdempotentCommand(
+            name = OperationName.CREATE_ORDER,
+            operationId = OperationId("command"),
             backoff = FixedBackoff(1.seconds),
-        )
+        ).copy(maxAttempts = 1)
         val failure = RequestFailure.Timeout(
             TimeoutStage.RESPONSE_HEADERS,
             OutcomeCertainty.MAY_HAVE_REACHED_SERVER,

@@ -6,9 +6,6 @@ import kotlinx.coroutines.CoroutineScope
 class OperationControllerFactory @Inject constructor(
     private val failureClassifier: FailureClassifier,
     private val retryDecider: RetryDecider,
-    private val retryBudget: RetryBudget,
-    private val circuitBreaker: CircuitBreaker,
-    private val bulkhead: Bulkhead,
     private val observer: RetryObserver,
 ) {
     constructor(
@@ -17,9 +14,6 @@ class OperationControllerFactory @Inject constructor(
     ) : this(
         failureClassifier,
         retryDecider,
-        UnlimitedRetryBudget,
-        NoOpCircuitBreaker,
-        Bulkhead(),
         NoOpRetryObserver,
     )
 
@@ -34,9 +28,6 @@ class OperationControllerFactory @Inject constructor(
         executor = RetryExecutor(
             failureClassifier = failureClassifier,
             retryDecider = retryDecider,
-            retryBudget = retryBudget,
-            circuitBreaker = circuitBreaker,
-            bulkhead = bulkhead,
             observer = observer,
         ),
         call = call,

@@ -1,13 +1,10 @@
 # Retry incident runbook
 
-1. Compare first-attempt success, retry success, exhausted, budget-denied, circuit-open, and
-   unknown-outcome rates by controlled operation name.
-2. If retries amplify load, disable automatic retry for the affected profile and keep status
-   reconciliation enabled for already-created commands.
-3. Never clear pending Create Order records or generate replacement keys during mitigation.
-4. Confirm backend idempotency/status health before closing the incident.
-5. Roll back only to a version that can read the current Room schema and recognize operations
-   created by the new protocol.
-
-Dashboard, alert thresholds, on-call ownership, and feature-flag commands must be filled in by the
-production SRE/backend teams before rollout.
+1. Compare first-attempt success, retry success, exhausted attempts, and unknown-outcome rates by
+   controlled operation name.
+2. If retries amplify load, reduce attempts in the affected operation profile and release the
+   change; this study app has no remote kill switch.
+3. Confirm backend idempotency and status-query health before closing an incident involving Create
+   Order.
+4. Never advise a user to submit a replacement order after an ambiguous completion; verify the
+   status from the active screen session instead.

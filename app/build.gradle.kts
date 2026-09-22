@@ -6,10 +6,6 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
-
 android {
     namespace = "io.github.cleitonmonteiro.requestretry"
     compileSdk {
@@ -68,22 +64,10 @@ dependencies {
     implementation(libs.ktor.client.logging)
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.hilt.work)
     ksp(libs.hilt.android.compiler)
-    ksp(libs.androidx.hilt.compiler)
-    ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.ktor.client.mock)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.room.testing)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

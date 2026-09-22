@@ -25,8 +25,8 @@ class OperationControllerTest {
         var calls = 0
         val controller = controller(
             scope = backgroundScope,
-            spec = OperationProfiles.foregroundUnsafeCommand(
-                OperationName.ITEM_SEND,
+            spec = OperationProfiles.foregroundIdempotentCommand(
+                OperationName.CREATE_ORDER,
                 OperationId("command"),
                 backoff = FixedBackoff(Duration.ZERO),
             ),
@@ -58,7 +58,7 @@ class OperationControllerTest {
                     OperationName.PROFILE_READ,
                     OperationId("snapshot"),
                     FixedBackoff(Duration.ZERO),
-                )
+                ).copy(maxAttempts = 1)
             },
             executor = RetryExecutor(),
             call = OneShotCall { input, _ -> observed = input; input.value },
@@ -103,12 +103,11 @@ class OperationControllerTest {
         val controller = OperationController(
             scope = backgroundScope,
             specFactory = OperationSpecFactory<String> {
-                OperationProfiles.foregroundUnsafeCommand(
-                    OperationName.ITEM_SEND,
+                OperationProfiles.foregroundIdempotentCommand(
+                    OperationName.CREATE_ORDER,
                     OperationId("unknown"),
-                    statusVerificationAvailable = true,
                     backoff = FixedBackoff(Duration.ZERO),
-                )
+                ).copy(maxAttempts = 1)
             },
             executor = RetryExecutor(),
             call = OneShotCall { _, _ ->
@@ -145,7 +144,7 @@ class OperationControllerTest {
             OperationName.PROFILE_READ,
             OperationId("manual-retry"),
             FixedBackoff(Duration.ZERO),
-        ).copy(maxAttempts = 1)
+        ).copy(maxAttempts = 3)
         val controller = controller(backgroundScope, spec) { input ->
             calls++
             if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
@@ -163,6 +162,29 @@ class OperationControllerTest {
         release.complete(Unit)
         runCurrent()
         assertEquals("snapshot", (controller.state.value as OperationState.Succeeded).data)
+    }
+
+    @Test
+    fun `third transient failure ends the manual retry session`() = runTest {
+        val spec = OperationProfiles.foregroundRead(
+            OperationName.PROFILE_READ,
+            OperationId("manual-limit"),
+            FixedBackoff(Duration.ZERO),
+        ).copy(maxAttempts = 3)
+        val controller = controller(backgroundScope, spec) {
+            throw RequestFailureException(RequestFailure.Http(500))
+        }
+
+        controller.start("snapshot")
+        runCurrent()
+        controller.retry()
+        runCurrent()
+        controller.retry()
+        runCurrent()
+
+        val failed = controller.state.value as OperationState.Failed
+        assertEquals(3, failed.attemptsUsed)
+        assertEquals(RecoveryAction.Leave, failed.recovery)
     }
 
     private fun controller(

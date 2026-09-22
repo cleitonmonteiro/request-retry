@@ -47,7 +47,11 @@ data class RetryContext(
 )
 
 sealed interface RetryDecision {
-    data class Retry(val reason: RetryReason, val serverDelay: Duration? = null) : RetryDecision
+    data class Retry(
+        val failure: PublicFailure,
+        val reason: RetryReason,
+        val serverDelay: Duration? = null,
+    ) : RetryDecision
     data class Stop(val failure: PublicFailure, val recovery: RecoveryAction) : RetryDecision
     data object VerifyStatus : RetryDecision
 }
@@ -60,24 +64,22 @@ object ConservativeRetryDecider : RetryDecider {
     override fun decide(context: RetryContext): RetryDecision {
         val spec = context.spec
         val failure = context.failure
-        if (isAmbiguousUnsafeMutation(failure, spec.safety)) return RetryDecision.VerifyStatus
-
         val terminal = terminalDecision(failure)
         if (terminal != null) return terminal
 
         val retryable = retryableDecision(failure)
-        val canRetry = retryable != null &&
-            spec.automaticRetry == AutomaticRetryPolicy.ENABLED &&
-            context.attempt < spec.maxAttempts &&
-            spec.safety !is OperationSafety.NonIdempotentCommand
-        if (canRetry) return requireNotNull(retryable)
+        if (retryable != null) {
+            if (context.attempt < spec.maxAttempts) return retryable
+            if (isAmbiguousIdempotentMutation(failure, spec.safety)) return RetryDecision.VerifyStatus
+            return RetryDecision.Stop(publicFailure(failure), RecoveryAction.Leave)
+        }
 
         if (isAmbiguousIdempotentMutation(failure, spec.safety)) return RetryDecision.VerifyStatus
 
         val publicFailure = publicFailure(failure)
         val recovery = if (
-            spec.safety is OperationSafety.ReadOnly ||
-            (failure == RequestFailure.Offline && spec.safety is OperationSafety.IdempotentCommand)
+            spec.safety == OperationSafety.READ_ONLY ||
+            (failure == RequestFailure.Offline && spec.safety == OperationSafety.IDEMPOTENT_COMMAND)
         ) RecoveryAction.Retry else RecoveryAction.Leave
         return RetryDecision.Stop(publicFailure, recovery)
     }
@@ -99,15 +101,28 @@ object ConservativeRetryDecider : RetryDecider {
     }
 
     private fun retryableDecision(failure: RequestFailure): RetryDecision.Retry? = when (failure) {
+        RequestFailure.Offline,
         is RequestFailure.Dns,
         is RequestFailure.Connection,
         is RequestFailure.Timeout,
-        -> RetryDecision.Retry(RetryReason.TransientTransport)
-        is RequestFailure.RateLimited -> RetryDecision.Retry(RetryReason.RateLimited, failure.retryAfter)
+        -> RetryDecision.Retry(publicFailure(failure), RetryReason.TransientTransport)
+        is RequestFailure.RateLimited -> RetryDecision.Retry(
+            publicFailure(failure),
+            RetryReason.RateLimited,
+            failure.retryAfter,
+        )
         is RequestFailure.Http -> when (failure.statusCode) {
-            408, 425 -> RetryDecision.Retry(RetryReason.TransientTransport, failure.retryAfter)
-            429 -> RetryDecision.Retry(RetryReason.RateLimited, failure.retryAfter)
-            500, 502, 503, 504 -> RetryDecision.Retry(RetryReason.ServerUnavailable, failure.retryAfter)
+            408, 425 -> RetryDecision.Retry(
+                publicFailure(failure),
+                RetryReason.TransientTransport,
+                failure.retryAfter,
+            )
+            429 -> RetryDecision.Retry(publicFailure(failure), RetryReason.RateLimited, failure.retryAfter)
+            500, 502, 503, 504 -> RetryDecision.Retry(
+                publicFailure(failure),
+                RetryReason.ServerUnavailable,
+                failure.retryAfter,
+            )
             else -> null
         }
         else -> null
@@ -132,23 +147,11 @@ object ConservativeRetryDecider : RetryDecider {
         is RequestFailure.Unknown -> PublicFailure.Unknown
     }
 
-    private fun isAmbiguousUnsafeMutation(
-        failure: RequestFailure,
-        safety: OperationSafety,
-    ): Boolean {
-        if (safety !is OperationSafety.NonIdempotentCommand || !safety.statusVerificationAvailable) return false
-        return when (failure) {
-            is RequestFailure.Timeout -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER
-            is RequestFailure.Connection -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER
-            else -> false
-        }
-    }
-
     private fun isAmbiguousIdempotentMutation(
         failure: RequestFailure,
         safety: OperationSafety,
     ): Boolean {
-        if (safety !is OperationSafety.IdempotentCommand || !safety.statusVerificationAvailable) return false
+        if (safety != OperationSafety.IDEMPOTENT_COMMAND) return false
         return when (failure) {
             is RequestFailure.Timeout -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER
             is RequestFailure.Connection -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER

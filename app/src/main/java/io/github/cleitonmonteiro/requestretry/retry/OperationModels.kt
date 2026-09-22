@@ -1,71 +1,32 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
-import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import java.time.Instant
 import kotlin.time.Duration
 
 enum class OperationName {
     PROFILE_READ,
-    ORDERS_READ,
-    ITEMS_READ,
-    ITEM_SEND,
     CREATE_ORDER,
-    ORDER_STATUS,
 }
 
-sealed interface OperationSafety {
-    data object ReadOnly : OperationSafety
-    data class IdempotentCommand(
-        val idempotencyKey: IdempotencyKey,
-        val statusVerificationAvailable: Boolean = true,
-    ) : OperationSafety
-    data class NonIdempotentCommand(val statusVerificationAvailable: Boolean) : OperationSafety
-}
+enum class OperationSafety { READ_ONLY, IDEMPOTENT_COMMAND }
 
-enum class AutomaticRetryPolicy { ENABLED, DISABLED }
-enum class OfflineBehavior { MANUAL, WAIT_FOR_VALIDATED_NETWORK }
-
-sealed interface ConcurrencyPolicy {
-    data object CancelPrevious : ConcurrencyPolicy
-    data object DropWhileRunning : ConcurrencyPolicy
-    data object JoinExisting : ConcurrencyPolicy
-    data class Queue(val capacity: Int) : ConcurrencyPolicy {
-        init {
-            require(capacity > 0) { "queue capacity must be positive" }
-        }
-    }
-    data object Reject : ConcurrencyPolicy
-}
+enum class ConcurrencyPolicy { CANCEL_PREVIOUS, DROP_WHILE_RUNNING }
 
 data class OperationSpec(
     val operationId: OperationId,
     val name: OperationName,
     val safety: OperationSafety,
     val maxAttempts: Int,
-    val perAttemptTimeout: Duration,
-    val overallDeadline: Duration,
     val backoff: BackoffStrategy,
     val concurrency: ConcurrencyPolicy,
-    val offlineBehavior: OfflineBehavior,
-    val automaticRetry: AutomaticRetryPolicy,
 ) {
     init {
         require(maxAttempts >= 1) { "maxAttempts must be at least 1" }
-        require(perAttemptTimeout.isFinite() && perAttemptTimeout.isPositive()) {
-            "perAttemptTimeout must be positive and finite"
+        require(backoff.maxDelay.isFinite() && !backoff.maxDelay.isNegative()) {
+            "backoff maxDelay must be finite and non-negative"
         }
-        require(overallDeadline.isFinite() && overallDeadline >= perAttemptTimeout) {
-            "overallDeadline must be finite and at least perAttemptTimeout"
-        }
-        require(backoff.maxDelay.isFinite() && backoff.maxDelay < overallDeadline) {
-            "backoff maxDelay must be finite and less than overallDeadline"
-        }
-        require(
-            safety !is OperationSafety.NonIdempotentCommand ||
-                automaticRetry == AutomaticRetryPolicy.DISABLED,
-        ) { "non-idempotent commands cannot enable generic automatic retry" }
     }
 }
 
@@ -100,9 +61,6 @@ sealed interface PublicFailure {
     data object Protocol : PublicFailure
     data object Local : PublicFailure
     data object TimedOut : PublicFailure
-    data object DeadlineExceeded : PublicFailure
-    data object RetryBudgetExhausted : PublicFailure
-    data object CircuitOpen : PublicFailure
     data object Unknown : PublicFailure
 }
 
@@ -160,6 +118,10 @@ internal sealed interface ExecutionProgress {
 
 internal sealed interface ExecutionOutcome<out T> {
     data class Success<T>(val data: T, val attemptsUsed: Int) : ExecutionOutcome<T>
+    data class ManualRetry(
+        val failure: PublicFailure,
+        val attemptsUsed: Int,
+    ) : ExecutionOutcome<Nothing>
     data class Failure(
         val failure: PublicFailure,
         val recovery: RecoveryAction,

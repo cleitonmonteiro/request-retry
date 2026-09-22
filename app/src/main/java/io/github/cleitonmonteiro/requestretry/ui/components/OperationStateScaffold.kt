@@ -117,9 +117,6 @@ private fun PublicFailure.copyResources(): FailureCopy = when (this) {
     PublicFailure.RateLimited -> FailureCopy(R.string.failure_rate_limited_title, R.string.failure_rate_limited_description)
     PublicFailure.Protocol, PublicFailure.Local -> FailureCopy(R.string.failure_protocol_title, R.string.failure_protocol_description)
     PublicFailure.TimedOut -> FailureCopy(R.string.failure_timeout_title, R.string.failure_timeout_description)
-    PublicFailure.DeadlineExceeded -> FailureCopy(R.string.failure_deadline_title, R.string.failure_deadline_description)
-    PublicFailure.RetryBudgetExhausted -> FailureCopy(R.string.failure_budget_title, R.string.failure_budget_description)
-    PublicFailure.CircuitOpen -> FailureCopy(R.string.failure_circuit_title, R.string.failure_circuit_description)
     PublicFailure.Unknown -> FailureCopy(R.string.failure_unknown_title, R.string.failure_unknown_description)
 }
 

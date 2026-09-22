@@ -33,9 +33,9 @@ class ApiClientTest {
     }
 
     @Test
-    fun `execute always fails under ALWAYS_FAIL`() = runTest {
+    fun `execute always fails under connection error`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
+        val scenarios = ScenarioHolder().apply { select(Scenario.CONNECTION_ERROR) }
         val client = ApiClient(scenarios)
 
         // Act
@@ -80,11 +80,11 @@ class ApiClientTest {
 
     @Test
     fun `simulated HTTP status crosses the data boundary as typed failure`() = runTest {
-        val scenarios = ScenarioHolder().apply { select(Scenario.HTTP_403) }
+        val scenarios = ScenarioHolder().apply { select(Scenario.HTTP_400) }
         val error = runCatching { ApiClient(scenarios).execute { "payload" } }.exceptionOrNull()
 
         assertTrue(error is RequestFailureException)
-        assertEquals(RequestFailure.Http(403), (error as RequestFailureException).failure)
+        assertEquals(RequestFailure.Http(400), (error as RequestFailureException).failure)
     }
 
     @Test

@@ -13,10 +13,7 @@ import androidx.compose.ui.unit.dp
 
 sealed interface HomeIntent {
     data object OpenProfile : HomeIntent
-    data object OpenOrders : HomeIntent
-    data object OpenPicker : HomeIntent
     data object OpenCreateOrder : HomeIntent
-    data object OpenMigrationDemo : HomeIntent
 }
 
 @Composable
@@ -35,20 +32,8 @@ fun HomeScreen(
         Button(onClick = { onIntent(HomeIntent.OpenProfile) }, modifier = Modifier.padding(top = 24.dp)) {
             Text("Profile demo")
         }
-        Button(onClick = { onIntent(HomeIntent.OpenOrders) }, modifier = Modifier.padding(top = 12.dp)) {
-            Text("Orders demo")
-        }
-        Button(onClick = { onIntent(HomeIntent.OpenPicker) }, modifier = Modifier.padding(top = 12.dp)) {
-            Text("Item picker demo")
-        }
         Button(onClick = { onIntent(HomeIntent.OpenCreateOrder) }, modifier = Modifier.padding(top = 12.dp)) {
             Text("Create order demo")
-        }
-        Button(
-            onClick = { onIntent(HomeIntent.OpenMigrationDemo) },
-            modifier = Modifier.padding(top = 12.dp),
-        ) {
-            Text("Legacy migration demo (standalone Activity)")
         }
     }
 }

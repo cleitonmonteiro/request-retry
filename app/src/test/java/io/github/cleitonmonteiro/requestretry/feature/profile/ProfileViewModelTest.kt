@@ -34,7 +34,7 @@ class ProfileViewModelTest {
     @Test
     fun `view model loads on init and forwards retry to the use case`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_FAIL) }
+        val scenarios = ScenarioHolder().apply { select(Scenario.CONNECTION_ERROR) }
         val viewModel = newViewModel(scenarios)
         advanceUntilIdle()
         scenarios.select(Scenario.ALWAYS_SUCCEED)
@@ -49,21 +49,21 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `setScenario updates the shared holder and reloads with a fresh budget`() = runTest {
+    fun `setScenario updates the shared holder and reloads the profile`() = runTest {
         // Arrange
         val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
         val viewModel = newViewModel(scenarios)
         advanceUntilIdle()
 
         // Act
-        viewModel.onIntent(ProfileIntent.SelectScenario(Scenario.ALWAYS_FAIL))
+        viewModel.onIntent(ProfileIntent.SelectScenario(Scenario.CONNECTION_ERROR))
         advanceUntilIdle()
 
         // Assert
-        assertEquals(Scenario.ALWAYS_FAIL, scenarios.scenario.value)
-        assertEquals(Scenario.ALWAYS_FAIL, viewModel.state.value.scenario)
+        assertEquals(Scenario.CONNECTION_ERROR, scenarios.scenario.value)
+        assertEquals(Scenario.CONNECTION_ERROR, viewModel.state.value.scenario)
         val feedback = viewModel.state.value.request as OperationState.Failed
-        assertEquals(3, feedback.attemptsUsed)
+        assertEquals(1, feedback.attemptsUsed)
     }
 
     @Test

@@ -15,8 +15,6 @@ import kotlinx.coroutines.flow.flow
 class OrdersRepositoryImpl @Inject constructor(
     private val remote: OrdersRemoteDataSource,
 ) : OrdersRepository {
-    override fun getOrders(): Flow<List<Order>> = flow { emit(remote.fetchOrders().map { it.toDomain() }) }
-
     override fun createOrder(request: NewOrderRequest): Flow<Order> =
         flow {
             emit(
