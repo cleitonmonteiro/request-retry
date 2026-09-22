@@ -2,10 +2,8 @@
 
 package io.github.cleitonmonteiro.requestretry.retry
 
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -32,7 +30,7 @@ class RetryExecutorTest {
                 call = OneShotCall<Unit, String> { _, _ ->
                     calls++
                     throw RequestFailureException(
-                        RequestFailure.Connection(TimeoutStage.CONNECT, OutcomeCertainty.NOT_SENT),
+                        RequestFailure.Connection(mayHaveReachedServer = false),
                     )
                 },
                 onProgress = progress::add,
@@ -64,7 +62,7 @@ class RetryExecutorTest {
         )
 
         assertEquals(
-            ExecutionOutcome.Failure(PublicFailure.PermissionDenied, RecoveryAction.Leave, 1),
+            ExecutionOutcome.Failure(PublicFailure.Unknown, RecoveryAction.Leave, 1),
             outcome,
         )
     }
@@ -78,7 +76,7 @@ class RetryExecutorTest {
                 attempt = 1,
                 call = OneShotCall<Unit, String> { _, _ ->
                     throw RequestFailureException(
-                        RequestFailure.Connection(TimeoutStage.CONNECT, OutcomeCertainty.NOT_SENT),
+                        RequestFailure.Connection(mayHaveReachedServer = false),
                     )
                 },
                 onProgress = {},

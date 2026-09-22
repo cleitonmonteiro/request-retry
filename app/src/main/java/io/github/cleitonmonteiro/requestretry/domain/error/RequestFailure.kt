@@ -5,18 +5,7 @@ import kotlin.time.Duration
 /** Stable failure vocabulary shared by data, resilience, and presentation layers. */
 sealed interface RequestFailure {
     data object Offline : RequestFailure
-    data class Dns(val diagnosticCode: String? = null) : RequestFailure
-    data class Tls(val diagnosticCode: String? = null) : RequestFailure
-    data class Connection(
-        val stage: TimeoutStage,
-        val outcomeCertainty: OutcomeCertainty,
-        val diagnosticCode: String? = null,
-    ) : RequestFailure
-
-    data class Timeout(
-        val stage: TimeoutStage,
-        val outcomeCertainty: OutcomeCertainty,
-    ) : RequestFailure
+    data class Connection(val mayHaveReachedServer: Boolean) : RequestFailure
 
     data class Http(
         val statusCode: Int,
@@ -25,30 +14,10 @@ sealed interface RequestFailure {
         val requestId: String? = null,
     ) : RequestFailure
 
-    data object AuthenticationRequired : RequestFailure
-    data object PermissionDenied : RequestFailure
-    data class Validation(val backendCode: String? = null) : RequestFailure
-    data class Conflict(val backendCode: String? = null) : RequestFailure
-    data class RateLimited(val retryAfter: Duration? = null) : RequestFailure
-    data class Protocol(val diagnosticCode: String) : RequestFailure
-    data class Local(val diagnosticCode: String) : RequestFailure
-    data class Unknown(val diagnosticCode: String) : RequestFailure
-}
-
-/** Network phase in which a transport timeout was observed. */
-enum class TimeoutStage {
-    CONNECT,
-    REQUEST_BODY,
-    RESPONSE_HEADERS,
-    RESPONSE_BODY,
-    OVERALL,
-}
-
-/** Whether a failed request might already have reached the remote server. */
-enum class OutcomeCertainty {
-    NOT_SENT,
-    MAY_HAVE_REACHED_SERVER,
-    SERVER_REJECTED,
+    /** Terminal failure whose exact cause (timeout, auth, permission, validation, conflict, rate limit, protocol) is not distinguished. */
+    data object Generic : RequestFailure
+    data object Local : RequestFailure
+    data object Unknown : RequestFailure
 }
 
 /**

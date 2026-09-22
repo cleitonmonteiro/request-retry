@@ -1,8 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.assertEquals
@@ -18,22 +16,13 @@ class FailurePolicyTest {
 
     @Test
     fun `4xx failures are terminal by default`() {
-        val expectations = mapOf(
-            400 to RecoveryAction.EditInput,
-            401 to RecoveryAction.Authenticate,
-            403 to RecoveryAction.Leave,
-            404 to RecoveryAction.Leave,
-            409 to RecoveryAction.EditInput,
-            422 to RecoveryAction.EditInput,
-        )
-
-        expectations.forEach { (status, recovery) ->
+        listOf(400, 401, 403, 404, 409, 422).forEach { status ->
             val classified = DefaultFailureClassifier.classify(
                 io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException(RequestFailure.Http(status)),
             )
             val decision = ConservativeRetryDecider.decide(RetryContext(readSpec, classified, attempt = 1))
             assertTrue("HTTP $status must stop", decision is RetryDecision.Stop)
-            assertEquals(recovery, (decision as RetryDecision.Stop).recovery)
+            assertEquals(RecoveryAction.Leave, (decision as RetryDecision.Stop).recovery)
         }
     }
 
@@ -55,7 +44,7 @@ class FailurePolicyTest {
     @Test
     fun `unknown failure fails closed`() {
         val decision = ConservativeRetryDecider.decide(
-            RetryContext(readSpec, RequestFailure.Unknown("test"), attempt = 1),
+            RetryContext(readSpec, RequestFailure.Unknown, attempt = 1),
         )
         assertEquals(
             RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave),
@@ -70,10 +59,7 @@ class FailurePolicyTest {
             operationId = OperationId("command"),
             backoff = FixedBackoff(1.seconds),
         ).copy(maxAttempts = 1)
-        val failure = RequestFailure.Timeout(
-            TimeoutStage.RESPONSE_HEADERS,
-            OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
-        )
+        val failure = RequestFailure.Connection(mayHaveReachedServer = true)
 
         assertEquals(
             RetryDecision.VerifyStatus,

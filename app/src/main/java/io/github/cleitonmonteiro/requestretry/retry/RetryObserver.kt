@@ -44,17 +44,9 @@ object NoOpRetryObserver : RetryObserver
 
 internal fun RequestFailure.telemetryCategory(): String = when (this) {
     RequestFailure.Offline -> "offline"
-    is RequestFailure.Dns -> "dns"
-    is RequestFailure.Tls -> "tls"
     is RequestFailure.Connection -> "connection"
-    is RequestFailure.Timeout -> "timeout"
     is RequestFailure.Http -> "http_${statusCode / 100}xx"
-    RequestFailure.AuthenticationRequired -> "authentication"
-    RequestFailure.PermissionDenied -> "permission"
-    is RequestFailure.Validation -> "validation"
-    is RequestFailure.Conflict -> "conflict"
-    is RequestFailure.RateLimited -> "rate_limited"
-    is RequestFailure.Protocol -> "protocol"
-    is RequestFailure.Local -> "local"
-    is RequestFailure.Unknown -> "unknown"
+    RequestFailure.Generic -> "generic"
+    RequestFailure.Local -> "local"
+    RequestFailure.Unknown -> "unknown"
 }

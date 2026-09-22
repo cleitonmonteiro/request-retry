@@ -1,9 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
@@ -40,17 +38,10 @@ class ApiClient @Inject constructor(
             throw when (scenario) {
                 Scenario.CONNECTION_ERROR, Scenario.SUCCEED_ON_THIRD_ATTEMPT ->
                     RequestFailureException(
-                        RequestFailure.Connection(
-                            TimeoutStage.CONNECT,
-                            OutcomeCertainty.NOT_SENT,
-                            "simulated_connection",
-                        ),
+                        RequestFailure.Connection(mayHaveReachedServer = false),
                     )
                 Scenario.RESPONSE_LOST_AFTER_COMMIT -> RequestFailureException(
-                    RequestFailure.Timeout(
-                        TimeoutStage.RESPONSE_HEADERS,
-                        OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
-                    ),
+                    RequestFailure.Connection(mayHaveReachedServer = true),
                 )
                 Scenario.HTTP_400 -> RequestFailureException(RequestFailure.Http(400))
                 Scenario.HTTP_429 -> RequestFailureException(RequestFailure.Http(429, retryAfter = kotlin.time.Duration.ZERO))

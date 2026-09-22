@@ -73,7 +73,7 @@ class RetryExecutor(
     } catch (fatal: Error) {
         throw fatal
     } catch (_: Throwable) {
-        RequestFailure.Local("failure_classifier")
+        RequestFailure.Local
     }
 
     private fun decideSafely(

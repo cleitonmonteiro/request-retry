@@ -3,10 +3,8 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import kotlin.time.Duration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -113,10 +111,7 @@ class OperationControllerTest {
             call = OneShotCall { _, _ ->
                 mutations++
                 throw RequestFailureException(
-                    RequestFailure.Timeout(
-                        TimeoutStage.RESPONSE_HEADERS,
-                        OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
-                    ),
+                    RequestFailure.Connection(mayHaveReachedServer = true),
                 )
             },
             verifier = StatusVerifier {

@@ -1,9 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.data.remote
 
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import io.ktor.client.plugins.ResponseException
 import io.ktor.client.statement.bodyAsText
 import java.io.IOException
@@ -29,11 +27,11 @@ internal suspend fun Throwable.toRequestFailureException(now: Instant = Instant.
             retryAfter = parseRetryAfter(response.headers["Retry-After"], now),
             requestId = response.headers["X-Request-ID"],
         )
-        is UnknownHostException -> RequestFailure.Dns(javaClass.simpleName)
-        is SSLException -> RequestFailure.Tls(javaClass.simpleName)
-        is SerializationException -> RequestFailure.Protocol("serialization")
+        is UnknownHostException -> RequestFailure.Connection(mayHaveReachedServer = false)
+        is SSLException -> RequestFailure.Generic
+        is SerializationException -> RequestFailure.Generic
         is IOException -> timeoutOrConnectionFailure()
-        else -> RequestFailure.Unknown(javaClass.simpleName.ifBlank { "unknown" })
+        else -> RequestFailure.Unknown
     }
     return RequestFailureException(failure, this)
 }
@@ -55,24 +53,10 @@ private suspend fun io.ktor.client.statement.HttpResponse.backendCodeFromBody():
 
 private fun IOException.timeoutOrConnectionFailure(): RequestFailure {
     val name = javaClass.simpleName
-    return when {
-        name.contains("ConnectTimeout", ignoreCase = true) -> RequestFailure.Timeout(
-            TimeoutStage.CONNECT,
-            OutcomeCertainty.NOT_SENT,
-        )
-        name.contains("SocketTimeout", ignoreCase = true) -> RequestFailure.Timeout(
-            TimeoutStage.RESPONSE_BODY,
-            OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
-        )
-        name.contains("RequestTimeout", ignoreCase = true) -> RequestFailure.Timeout(
-            TimeoutStage.RESPONSE_HEADERS,
-            OutcomeCertainty.MAY_HAVE_REACHED_SERVER,
-        )
-        else -> RequestFailure.Connection(
-            stage = TimeoutStage.CONNECT,
-            outcomeCertainty = OutcomeCertainty.NOT_SENT,
-            diagnosticCode = name,
-        )
+    return if (name.contains("Timeout", ignoreCase = true)) {
+        RequestFailure.Generic
+    } else {
+        RequestFailure.Connection(mayHaveReachedServer = false)
     }
 }
 

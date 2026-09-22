@@ -44,7 +44,6 @@ fun interface OneShotCall<in I, out O> {
 sealed interface RecoveryAction {
     data object Retry : RecoveryAction
     data object EditInput : RecoveryAction
-    data object Authenticate : RecoveryAction
     /** Asks the UI to query the server for the supplied operation identity. */
     data class VerifyStatus(val operationId: OperationId) : RecoveryAction
     data object ContactSupport : RecoveryAction
@@ -55,14 +54,8 @@ sealed interface RecoveryAction {
 sealed interface PublicFailure {
     data object Offline : PublicFailure
     data object TemporarilyUnavailable : PublicFailure
-    data object AuthenticationRequired : PublicFailure
-    data object PermissionDenied : PublicFailure
     data object Validation : PublicFailure
-    data object Conflict : PublicFailure
-    data object RateLimited : PublicFailure
-    data object Protocol : PublicFailure
     data object Local : PublicFailure
-    data object TimedOut : PublicFailure
     data object Unknown : PublicFailure
 }
 

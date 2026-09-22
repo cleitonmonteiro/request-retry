@@ -1,9 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
-import io.github.cleitonmonteiro.requestretry.domain.error.OutcomeCertainty
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.error.TimeoutStage
 import java.io.IOException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
@@ -16,25 +14,17 @@ object DefaultFailureClassifier : FailureClassifier {
         if (error is CancellationException) throw error
         return when (error) {
             is RequestFailureException -> normalize(error.failure)
-            is UnknownHostException -> RequestFailure.Dns(error::class.simpleName)
-            is SSLException -> RequestFailure.Tls(error::class.simpleName)
-            is IllegalArgumentException -> RequestFailure.Local("invariant")
-            is IOException -> RequestFailure.Connection(
-                stage = TimeoutStage.CONNECT,
-                outcomeCertainty = OutcomeCertainty.NOT_SENT,
-                diagnosticCode = error::class.simpleName,
-            )
-            else -> RequestFailure.Unknown(error::class.simpleName ?: "unknown")
+            is UnknownHostException -> RequestFailure.Connection(mayHaveReachedServer = false)
+            is SSLException -> RequestFailure.Generic
+            is IllegalArgumentException -> RequestFailure.Local
+            is IOException -> RequestFailure.Connection(mayHaveReachedServer = false)
+            else -> RequestFailure.Unknown
         }
     }
 
     private fun normalize(failure: RequestFailure): RequestFailure = when (failure) {
         is RequestFailure.Http -> when (failure.statusCode) {
-            401 -> RequestFailure.AuthenticationRequired
-            403 -> RequestFailure.PermissionDenied
-            400, 422 -> RequestFailure.Validation(failure.backendCode)
-            409 -> RequestFailure.Conflict(failure.backendCode)
-            429 -> RequestFailure.RateLimited(failure.retryAfter)
+            400, 401, 403, 409, 422, 429 -> RequestFailure.Generic
             else -> failure
         }
         else -> failure
@@ -92,14 +82,9 @@ object ConservativeRetryDecider : RetryDecider {
     }
 
     private fun terminalDecision(failure: RequestFailure): RetryDecision.Stop? = when (failure) {
-        RequestFailure.AuthenticationRequired -> RetryDecision.Stop(PublicFailure.AuthenticationRequired, RecoveryAction.Authenticate)
-        RequestFailure.PermissionDenied -> RetryDecision.Stop(PublicFailure.PermissionDenied, RecoveryAction.Leave)
-        is RequestFailure.Validation -> RetryDecision.Stop(PublicFailure.Validation, RecoveryAction.EditInput)
-        is RequestFailure.Conflict -> RetryDecision.Stop(PublicFailure.Conflict, RecoveryAction.EditInput)
-        is RequestFailure.Tls -> RetryDecision.Stop(PublicFailure.Protocol, RecoveryAction.ContactSupport)
-        is RequestFailure.Protocol -> RetryDecision.Stop(PublicFailure.Protocol, RecoveryAction.ContactSupport)
-        is RequestFailure.Local -> RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport)
-        is RequestFailure.Unknown -> RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave)
+        RequestFailure.Generic -> RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave)
+        RequestFailure.Local -> RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport)
+        RequestFailure.Unknown -> RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave)
         is RequestFailure.Http -> if (failure.statusCode in 400..499 || failure.statusCode == 501) {
             if (failure.statusCode in setOf(408, 425, 429)) null
             else RetryDecision.Stop(publicFailure(failure), RecoveryAction.Leave)
@@ -109,15 +94,8 @@ object ConservativeRetryDecider : RetryDecider {
 
     private fun retryableDecision(failure: RequestFailure): RetryDecision.Retry? = when (failure) {
         RequestFailure.Offline,
-        is RequestFailure.Dns,
         is RequestFailure.Connection,
-        is RequestFailure.Timeout,
         -> RetryDecision.Retry(publicFailure(failure), RetryReason.TransientTransport)
-        is RequestFailure.RateLimited -> RetryDecision.Retry(
-            publicFailure(failure),
-            RetryReason.RateLimited,
-            failure.retryAfter,
-        )
         is RequestFailure.Http -> when (failure.statusCode) {
             408, 425 -> RetryDecision.Retry(
                 publicFailure(failure),
@@ -137,21 +115,14 @@ object ConservativeRetryDecider : RetryDecider {
 
     private fun publicFailure(failure: RequestFailure): PublicFailure = when (failure) {
         RequestFailure.Offline -> PublicFailure.Offline
-        RequestFailure.AuthenticationRequired -> PublicFailure.AuthenticationRequired
-        RequestFailure.PermissionDenied -> PublicFailure.PermissionDenied
-        is RequestFailure.Validation -> PublicFailure.Validation
-        is RequestFailure.Conflict -> PublicFailure.Conflict
-        is RequestFailure.RateLimited -> PublicFailure.RateLimited
-        is RequestFailure.Protocol, is RequestFailure.Tls -> PublicFailure.Protocol
-        is RequestFailure.Local -> PublicFailure.Local
-        is RequestFailure.Timeout -> PublicFailure.TimedOut
-        is RequestFailure.Dns, is RequestFailure.Connection -> PublicFailure.TemporarilyUnavailable
+        RequestFailure.Generic -> PublicFailure.Unknown
+        RequestFailure.Local -> PublicFailure.Local
+        is RequestFailure.Connection -> PublicFailure.TemporarilyUnavailable
         is RequestFailure.Http -> when (failure.statusCode) {
-            429 -> PublicFailure.RateLimited
             in 500..599 -> PublicFailure.TemporarilyUnavailable
             else -> PublicFailure.Unknown
         }
-        is RequestFailure.Unknown -> PublicFailure.Unknown
+        RequestFailure.Unknown -> PublicFailure.Unknown
     }
 
     private fun isAmbiguousIdempotentMutation(
@@ -160,8 +131,7 @@ object ConservativeRetryDecider : RetryDecider {
     ): Boolean {
         if (safety != OperationSafety.IDEMPOTENT_COMMAND) return false
         return when (failure) {
-            is RequestFailure.Timeout -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER
-            is RequestFailure.Connection -> failure.outcomeCertainty == OutcomeCertainty.MAY_HAVE_REACHED_SERVER
+            is RequestFailure.Connection -> failure.mayHaveReachedServer
             else -> false
         }
     }

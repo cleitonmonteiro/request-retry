@@ -110,13 +110,8 @@ private data class FailureCopy(@param:StringRes val title: Int, @param:StringRes
 private fun PublicFailure.copyResources(): FailureCopy = when (this) {
     PublicFailure.Offline -> FailureCopy(R.string.failure_offline_title, R.string.failure_offline_description)
     PublicFailure.TemporarilyUnavailable -> FailureCopy(R.string.failure_temporary_title, R.string.failure_temporary_description)
-    PublicFailure.AuthenticationRequired -> FailureCopy(R.string.failure_auth_title, R.string.failure_auth_description)
-    PublicFailure.PermissionDenied -> FailureCopy(R.string.failure_permission_title, R.string.failure_permission_description)
     PublicFailure.Validation -> FailureCopy(R.string.failure_validation_title, R.string.failure_validation_description)
-    PublicFailure.Conflict -> FailureCopy(R.string.failure_conflict_title, R.string.failure_conflict_description)
-    PublicFailure.RateLimited -> FailureCopy(R.string.failure_rate_limited_title, R.string.failure_rate_limited_description)
-    PublicFailure.Protocol, PublicFailure.Local -> FailureCopy(R.string.failure_protocol_title, R.string.failure_protocol_description)
-    PublicFailure.TimedOut -> FailureCopy(R.string.failure_timeout_title, R.string.failure_timeout_description)
+    PublicFailure.Local -> FailureCopy(R.string.failure_protocol_title, R.string.failure_protocol_description)
     PublicFailure.Unknown -> FailureCopy(R.string.failure_unknown_title, R.string.failure_unknown_description)
 }
 
@@ -124,7 +119,6 @@ private fun PublicFailure.copyResources(): FailureCopy = when (this) {
 private fun RecoveryAction.labelResource(): Int = when (this) {
     RecoveryAction.Retry -> R.string.action_try_again
     RecoveryAction.EditInput -> R.string.action_edit_input
-    RecoveryAction.Authenticate -> R.string.action_authenticate
     is RecoveryAction.VerifyStatus -> R.string.action_verify_status
     RecoveryAction.ContactSupport -> R.string.action_contact_support
     RecoveryAction.Leave -> R.string.action_leave
