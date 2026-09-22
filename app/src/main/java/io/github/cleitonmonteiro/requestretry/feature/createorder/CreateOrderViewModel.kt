@@ -65,10 +65,9 @@ sealed interface CreateOrderEffect {
 
 /**
  * Demonstrates a request built from multiple form fields, passed through the layers as one data
- * class ([NewOrderRequest]) rather than loose primitives. [lastSubmittedRequest] is captured at
- * submit time and is what the [controller]'s ApiCall reads — never [_formInput] directly — so
- * [CreateOrderIntent.Retry] resends exactly what was submitted even if the form keeps changing
- * afterward.
+ * class ([NewOrderRequest]) rather than loose primitives. [controller] captures the submitted
+ * request in an immutable session — never [_formInput] directly — so [CreateOrderIntent.Retry]
+ * resends exactly what was submitted even if the form keeps changing afterward.
  */
 @HiltViewModel
 class CreateOrderViewModel @Inject constructor(
@@ -80,11 +79,8 @@ class CreateOrderViewModel @Inject constructor(
     private val _validationError = MutableStateFlow<OrderValidationError?>(null)
     private val controller = operationControllers.create(
         scope = viewModelScope,
-        specFactory = OperationSpecFactory<NewOrderRequest> { request ->
-            OperationProfiles.foregroundIdempotentCommand(
-                name = OperationName("create_order"),
-                operationId = request.operationId,
-            )
+        specFactory = OperationSpecFactory<NewOrderRequest> {
+            OperationProfiles.foreground(name = OperationName("create_order"))
         },
     ) { request, _ -> createOrder(request).single() }
     private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)

@@ -22,9 +22,9 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Thin test confirming [ProfileViewModel] wires itself to [io.github.cleitonmonteiro.requestretry.retry.RetryController]
+ * Thin test confirming [ProfileViewModel] wires itself to [io.github.cleitonmonteiro.requestretry.retry.OperationController]
  * and [ScenarioHolder] correctly — the retry/backoff behavior itself is covered by
- * RetryControllerTest, and ApiClient's scenario handling by ApiClientTest.
+ * OperationControllerTest and FailurePolicyTest, and ApiClient's scenario handling by ApiClientTest.
  */
 class ProfileViewModelTest {
 
@@ -85,7 +85,7 @@ class ProfileViewModelTest {
         val httpClient = mockHttpClient { """{"full_name":"Ada Lovelace","email_address":"ada@example.com"}""" }
         val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(httpClient, ApiClient(scenarios)))
         // A zero-delay policy keeps this test deterministic and independent of the jittered
-        // production default — the payoff of RetryController going through an injected factory.
+        // production default — the payoff of OperationController going through an injected factory.
         return ProfileViewModel(GetProfileUseCase(repository), scenarios, OperationControllerFactory())
     }
 }

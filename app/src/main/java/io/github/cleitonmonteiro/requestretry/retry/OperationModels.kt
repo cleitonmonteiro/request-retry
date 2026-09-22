@@ -1,7 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
-import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import java.time.Instant
 import kotlin.time.Duration
 
@@ -10,7 +9,6 @@ data class OperationName(val value: String)
 
 /** Immutable, validated execution policy for one logical operation. */
 data class OperationSpec(
-    val operationId: OperationId,
     val name: OperationName,
     val maxAttempts: Int,
     val backoff: BackoffStrategy,
@@ -25,7 +23,6 @@ data class OperationSpec(
 
 /** Immutable context passed to a single call without exposing mutable controller state. */
 data class AttemptContext(
-    val operationId: OperationId,
     val operationName: OperationName,
     val attempt: Int,
     val maxAttempts: Int,
@@ -64,7 +61,6 @@ sealed interface OperationState<out T> {
 
     /** A call is currently executing with the shown logical attempt number. */
     data class Running(
-        val operationId: OperationId,
         val attempt: Int,
         val maxAttempts: Int,
         val startedAt: Instant,
@@ -72,7 +68,6 @@ sealed interface OperationState<out T> {
 
     /** A retryable failure is observing its cooldown before manual retry is offered. */
     data class BackingOff(
-        val operationId: OperationId,
         val nextAttempt: Int,
         val maxAttempts: Int,
         val retryAt: Instant,
@@ -81,14 +76,12 @@ sealed interface OperationState<out T> {
 
     /** A call completed successfully with its immutable result. */
     data class Succeeded<T>(
-        val operationId: OperationId,
         val data: T,
         val attemptsUsed: Int,
     ) : OperationState<T>
 
     /** An operation ended with sanitized feedback and an allowed recovery. */
     data class Failed(
-        val operationId: OperationId,
         val failure: PublicFailure,
         val recovery: RecoveryAction,
         val attemptsUsed: Int,

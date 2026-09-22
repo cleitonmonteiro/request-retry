@@ -4,7 +4,6 @@ package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
@@ -85,9 +84,8 @@ class RetryExecutorTest {
 
     private fun readSpec(
         backoff: BackoffStrategy = FixedBackoff(Duration.ZERO),
-    ): OperationSpec = OperationProfiles.foregroundRead(
+    ): OperationSpec = OperationProfiles.foreground(
         OperationName("profile_read"),
-        OperationId("operation"),
         backoff,
     )
 }

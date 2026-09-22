@@ -36,12 +36,14 @@ class OperationController<I, O>(
     private val wallClock: WallClock = SystemWallClock,
 ) {
     /** Immutable command snapshot that prevents retries from observing later form edits. */
-    private data class Session<I>(
+    private class Session<I>(
         val token: Long,
         val input: I,
         val spec: OperationSpec,
         val attempt: Int,
-    )
+    ) {
+        lateinit var job: Job
+    }
 
     private val _state = MutableStateFlow<OperationState<O>>(OperationState.Idle)
     val state: StateFlow<OperationState<O>> = _state.asStateFlow()
@@ -49,7 +51,6 @@ class OperationController<I, O>(
     private val mailbox = Channel<suspend () -> Unit>(capacity = 64)
     private var nextToken = 0L
     private var current: Session<I>? = null
-    private var executionJob: Job? = null
 
     init {
         scope.launch {
@@ -58,26 +59,23 @@ class OperationController<I, O>(
     }
 
     fun start(input: I) {
-        mailbox.trySend { handleStart(input) }
+        check(mailbox.trySend { handleStart(input) }.isSuccess) { "Operation mailbox is full" }
     }
 
     fun retry() {
-        mailbox.trySend {
-            if (executionJob?.isActive == true) return@trySend
-            val failed = _state.value as? OperationState.Failed ?: return@trySend
-            if (failed.recovery != RecoveryAction.Retry) return@trySend
-            val session = current ?: return@trySend
-            begin(session.input, session.spec, failed.attemptsUsed + 1)
-        }
+        check(
+            mailbox.trySend {
+                if (current?.job?.isActive == true) return@trySend
+                val failed = _state.value as? OperationState.Failed ?: return@trySend
+                if (failed.recovery != RecoveryAction.Retry) return@trySend
+                val session = current ?: return@trySend
+                begin(session.input, session.spec, failed.attemptsUsed + 1)
+            }.isSuccess,
+        ) { "Operation mailbox is full" }
     }
 
     private fun handleStart(input: I) {
-        val active = executionJob?.isActive == true
-        if (!active) {
-            begin(input, specFactory.create(input), attempt = 1)
-            return
-        }
-        executionJob?.cancel()
+        current?.job?.takeIf { it.isActive }?.cancel()
         begin(input, specFactory.create(input), attempt = 1)
     }
 
@@ -85,12 +83,11 @@ class OperationController<I, O>(
         val session = Session(++nextToken, input, spec, attempt)
         current = session
         _state.value = OperationState.Running(
-            operationId = spec.operationId,
             attempt = attempt,
             maxAttempts = spec.maxAttempts,
             startedAt = wallClock.now(),
         )
-        executionJob = scope.launch {
+        session.job = scope.launch {
             val outcome = executor.execute(input, spec, attempt, call) { progress ->
                 mailbox.send { publishProgress(session.token, progress) }
             }
@@ -102,13 +99,11 @@ class OperationController<I, O>(
         val session = current?.takeIf { it.token == token } ?: return
         _state.value = when (progress) {
             is ExecutionProgress.AttemptStarted -> OperationState.Running(
-                operationId = session.spec.operationId,
                 attempt = progress.attempt,
                 maxAttempts = session.spec.maxAttempts,
                 startedAt = wallClock.now(),
             )
             is ExecutionProgress.RetryScheduled -> OperationState.BackingOff(
-                operationId = session.spec.operationId,
                 nextAttempt = progress.nextAttempt,
                 maxAttempts = session.spec.maxAttempts,
                 retryAt = wallClock.now().plusMillis(progress.delay.inWholeMilliseconds),
@@ -118,26 +113,22 @@ class OperationController<I, O>(
     }
 
     private fun publishOutcome(token: Long, outcome: ExecutionOutcome<O>) {
-        val session = current?.takeIf { it.token == token } ?: return
+        if (current?.token != token) return
         _state.value = when (outcome) {
             is ExecutionOutcome.Success -> OperationState.Succeeded(
-                operationId = session.spec.operationId,
                 data = outcome.data,
                 attemptsUsed = outcome.attemptsUsed,
             )
             is ExecutionOutcome.ManualRetry -> OperationState.Failed(
-                operationId = session.spec.operationId,
                 failure = outcome.failure,
                 recovery = RecoveryAction.Retry,
                 attemptsUsed = outcome.attemptsUsed,
             )
             is ExecutionOutcome.Failure -> OperationState.Failed(
-                operationId = session.spec.operationId,
                 failure = outcome.failure,
                 recovery = outcome.recovery,
                 attemptsUsed = outcome.attemptsUsed,
             )
         }
-        executionJob = null
     }
 }

@@ -1,16 +1,14 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
-import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FailurePolicyTest {
-    private val readSpec = OperationProfiles.foregroundRead(
+    private val readSpec = OperationProfiles.foreground(
         OperationName("profile_read"),
-        OperationId("read"),
         FixedBackoff(1.seconds),
     )
 
@@ -39,6 +37,16 @@ class FailurePolicyTest {
                 RetryContext(readSpec, RequestFailure.Http(501), attempt = 1),
             ) is RetryDecision.Stop,
         )
+    }
+
+    @Test
+    fun `classified 429 retries end to end`() {
+        val classified = DefaultFailureClassifier.classify(
+            io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException(RequestFailure.Http(429)),
+        )
+        val decision = ConservativeRetryDecider.decide(RetryContext(readSpec, classified, attempt = 1))
+        assertTrue("classified HTTP 429 must retry", decision is RetryDecision.Retry)
+        assertEquals(RetryReason.RateLimited, (decision as RetryDecision.Retry).reason)
     }
 
     @Test

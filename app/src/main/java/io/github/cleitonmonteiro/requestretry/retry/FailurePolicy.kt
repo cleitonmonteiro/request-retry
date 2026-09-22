@@ -24,7 +24,7 @@ object DefaultFailureClassifier : FailureClassifier {
 
     private fun normalize(failure: RequestFailure): RequestFailure = when (failure) {
         is RequestFailure.Http -> when (failure.statusCode) {
-            400, 401, 403, 409, 422, 429 -> RequestFailure.Generic
+            400, 401, 403, 409, 422 -> RequestFailure.Generic
             else -> failure
         }
         else -> failure

@@ -5,6 +5,17 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration
 
+/** Runs [block], never swallowing cancellation or a fatal [Error]; any other throwable is mapped by [fallback]. */
+private inline fun <T> runFailSafe(fallback: (Throwable) -> T, block: () -> T): T = try {
+    block()
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (fatal: Error) {
+    throw fatal
+} catch (error: Throwable) {
+    fallback(error)
+}
+
 /** Executes one HTTP call. A retryable failure waits through its cooldown, then returns control to the user. */
 class RetryExecutor(
     private val failureClassifier: FailureClassifier = DefaultFailureClassifier,
@@ -21,19 +32,13 @@ class RetryExecutor(
         observer.onOperationStarted(OperationTelemetryContext(spec.name, spec.maxAttempts))
         onProgress(ExecutionProgress.AttemptStarted(attempt))
         observer.onAttemptStarted(AttemptTelemetryContext(spec.name, attempt))
-        val context = AttemptContext(spec.operationId, spec.name, attempt, spec.maxAttempts)
+        val context = AttemptContext(spec.name, attempt, spec.maxAttempts)
 
-        val result = try {
+        val result = runFailSafe(fallback = { classifySafely(it) }) {
             val value = call.execute(input, context)
             observer.onAttemptFinished(AttemptTelemetryResult(spec.name, attempt, true, null))
             observer.onOperationFinished(OperationTelemetryResult(spec.name, "succeeded", attempt))
             return ExecutionOutcome.Success(value, attempt)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Error) {
-            throw error
-        } catch (error: Throwable) {
-            classifySafely(error)
         }
 
         observer.onAttemptFinished(
@@ -42,13 +47,9 @@ class RetryExecutor(
         return when (val decision = decideSafely(spec, result, attempt)) {
             is RetryDecision.Stop -> finishFailure(spec, decision.failure, decision.recovery, attempt)
             is RetryDecision.Retry -> {
-                val localDelay = try {
-                    spec.backoff.delayForRetry(attempt - 1)
-                } catch (error: Error) {
-                    throw error
-                } catch (_: Throwable) {
+                val localDelay = runFailSafe(fallback = {
                     return finishFailure(spec, PublicFailure.Local, RecoveryAction.ContactSupport, attempt)
-                }
+                }) { spec.backoff.delayForRetry(attempt - 1) }
                 val selected = maxOf(localDelay, decision.serverDelay ?: Duration.ZERO)
                 val delayDuration = minOf(selected, spec.backoff.maxDelay)
                 observer.onRetryScheduled(
@@ -62,26 +63,15 @@ class RetryExecutor(
         }
     }
 
-    private fun classifySafely(error: Throwable): RequestFailure = try {
-        failureClassifier.classify(error)
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (fatal: Error) {
-        throw fatal
-    } catch (_: Throwable) {
-        RequestFailure.Local
-    }
+    private fun classifySafely(error: Throwable): RequestFailure =
+        runFailSafe(fallback = { RequestFailure.Local }) { failureClassifier.classify(error) }
 
     private fun decideSafely(
         spec: OperationSpec,
         failure: RequestFailure,
         attempt: Int,
-    ): RetryDecision = try {
+    ): RetryDecision = runFailSafe(fallback = { RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport) }) {
         retryDecider.decide(RetryContext(spec, failure, attempt))
-    } catch (fatal: Error) {
-        throw fatal
-    } catch (_: Throwable) {
-        RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport)
     }
 
     private fun finishFailure(

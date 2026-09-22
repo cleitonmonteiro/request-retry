@@ -2,7 +2,6 @@
 
 package io.github.cleitonmonteiro.requestretry.retry
 
-import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
 import kotlin.time.Duration
@@ -23,9 +22,8 @@ class OperationControllerTest {
         var calls = 0
         val controller = controller(
             scope = backgroundScope,
-            spec = OperationProfiles.foregroundIdempotentCommand(
+            spec = OperationProfiles.foreground(
                 OperationName("create_order"),
-                OperationId("command"),
                 backoff = FixedBackoff(Duration.ZERO),
             ),
         ) { input ->
@@ -52,9 +50,8 @@ class OperationControllerTest {
         val controller = OperationController(
             scope = backgroundScope,
             specFactory = OperationSpecFactory<Input> {
-                OperationProfiles.foregroundRead(
+                OperationProfiles.foreground(
                     OperationName("profile_read"),
-                    OperationId("snapshot"),
                     FixedBackoff(Duration.ZERO),
                 ).copy(maxAttempts = 1)
             },
@@ -75,7 +72,7 @@ class OperationControllerTest {
         val firstRelease = CompletableDeferred<Unit>()
         val controller = controller(
             scope = backgroundScope,
-            spec = OperationProfiles.foregroundRead(
+            spec = OperationProfiles.foreground(
                 OperationName("profile_read"),
                 backoff = FixedBackoff(Duration.ZERO),
             ),
@@ -98,9 +95,8 @@ class OperationControllerTest {
     fun `concurrent manual retries spend only one new execution`() = runTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
-        val spec = OperationProfiles.foregroundRead(
+        val spec = OperationProfiles.foreground(
             OperationName("profile_read"),
-            OperationId("manual-retry"),
             FixedBackoff(Duration.ZERO),
         ).copy(maxAttempts = 3)
         val controller = controller(backgroundScope, spec) { input ->
@@ -124,9 +120,8 @@ class OperationControllerTest {
 
     @Test
     fun `third transient failure ends the manual retry session`() = runTest {
-        val spec = OperationProfiles.foregroundRead(
+        val spec = OperationProfiles.foreground(
             OperationName("profile_read"),
-            OperationId("manual-limit"),
             FixedBackoff(Duration.ZERO),
         ).copy(maxAttempts = 3)
         val controller = controller(backgroundScope, spec) {
