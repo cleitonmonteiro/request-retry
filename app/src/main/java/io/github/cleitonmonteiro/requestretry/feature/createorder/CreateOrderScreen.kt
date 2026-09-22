@@ -22,7 +22,6 @@ import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
 import io.github.cleitonmonteiro.requestretry.ui.components.OperationStateScaffold
-import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
@@ -58,10 +57,6 @@ private fun CreateOrderScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(
-            selected = state.scenario,
-            onSelect = { onIntent(CreateOrderIntent.SelectScenario(it)) },
-        )
         val showingFeedback = state.result is OperationState.Failed
         if (!showingFeedback) OutlinedTextField(
             value = state.input.itemName,

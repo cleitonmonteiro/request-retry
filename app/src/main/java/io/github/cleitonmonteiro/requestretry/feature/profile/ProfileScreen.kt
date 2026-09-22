@@ -11,9 +11,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
+import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
 import io.github.cleitonmonteiro.requestretry.ui.components.OperationStateScaffold
-import io.github.cleitonmonteiro.requestretry.ui.components.ScenarioSelector
 import io.github.cleitonmonteiro.requestretry.ui.mvi.CollectEffect
 
 @Composable
@@ -38,23 +38,17 @@ fun ProfileRoute(
 
 @Composable
 private fun ProfileScreen(
-    state: ProfileUiState,
+    state: OperationState<UserProfile>,
     onIntent: (ProfileIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        ScenarioSelector(
-            selected = state.scenario,
-            onSelect = { onIntent(ProfileIntent.SelectScenario(it)) },
-        )
-        OperationStateScaffold(
-            state = state.request,
-            onRecovery = { recovery ->
-                onIntent(if (recovery == RecoveryAction.Retry) ProfileIntent.Retry else ProfileIntent.Leave)
-            },
-            modifier = Modifier.fillMaxSize(),
-        ) { profile -> ProfileCard(profile) }
-    }
+    OperationStateScaffold(
+        state = state,
+        onRecovery = { recovery ->
+            onIntent(if (recovery == RecoveryAction.Retry) ProfileIntent.Retry else ProfileIntent.Leave)
+        },
+        modifier = modifier.fillMaxSize(),
+    ) { profile -> ProfileCard(profile) }
 }
 
 @Composable

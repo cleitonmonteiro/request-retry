@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +16,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.cleitonmonteiro.requestretry.R
-import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import io.github.cleitonmonteiro.requestretry.retry.PublicFailure
 import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
@@ -105,24 +103,4 @@ private fun RecoveryAction.labelResource(): Int = when (this) {
     RecoveryAction.Retry -> R.string.action_try_again
     RecoveryAction.ContactSupport -> R.string.action_contact_support
     RecoveryAction.Leave -> R.string.action_leave
-}
-
-@Composable
-fun ScenarioSelector(
-    selected: Scenario,
-    onSelect: (Scenario) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier.padding(16.dp)) {
-        Text(text = "Scenario", style = MaterialTheme.typography.labelLarge)
-        Column(modifier = Modifier.padding(top = 8.dp)) {
-            Scenario.entries.forEach { scenario ->
-                FilterChip(
-                    selected = scenario == selected,
-                    onClick = { onSelect(scenario) },
-                    label = { Text(scenario.name.replace('_', ' ').lowercase()) },
-                )
-            }
-        }
-    }
 }

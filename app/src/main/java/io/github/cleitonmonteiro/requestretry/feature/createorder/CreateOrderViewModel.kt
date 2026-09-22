@@ -3,8 +3,6 @@ package io.github.cleitonmonteiro.requestretry.feature.createorder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
-import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
@@ -39,7 +37,6 @@ data class OrderFormInput(
 data class CreateOrderUiState(
     val input: OrderFormInput,
     val result: OperationState<Order>,
-    val scenario: Scenario,
     val validationError: OrderValidationError?,
 )
 
@@ -54,7 +51,6 @@ sealed interface CreateOrderIntent {
     data class ChangeItemName(val value: String) : CreateOrderIntent
     data class ChangeQuantity(val value: String) : CreateOrderIntent
     data class ChangeCustomerName(val value: String) : CreateOrderIntent
-    data class SelectScenario(val scenario: Scenario) : CreateOrderIntent
 }
 
 /** One-off effects emitted after an order result or a leave request. */
@@ -72,7 +68,6 @@ sealed interface CreateOrderEffect {
 @HiltViewModel
 class CreateOrderViewModel @Inject constructor(
     private val createOrder: CreateOrderUseCase,
-    private val scenarios: ScenarioHolder,
     operationControllers: OperationControllerFactory,
 ) : ViewModel() {
     private val _formInput = MutableStateFlow(OrderFormInput())
@@ -88,7 +83,6 @@ class CreateOrderViewModel @Inject constructor(
     val state: StateFlow<CreateOrderUiState> = combine(
         _formInput,
         controller.state,
-        scenarios.scenario,
         _validationError,
         ::CreateOrderUiState,
     ).stateIn(
@@ -97,7 +91,6 @@ class CreateOrderViewModel @Inject constructor(
         initialValue = CreateOrderUiState(
             input = _formInput.value,
             result = controller.state.value,
-            scenario = scenarios.scenario.value,
             validationError = _validationError.value,
         ),
     )
@@ -127,7 +120,6 @@ class CreateOrderViewModel @Inject constructor(
             is CreateOrderIntent.ChangeCustomerName -> {
                 _formInput.update { it.copy(customerName = intent.value) }
             }
-            is CreateOrderIntent.SelectScenario -> scenarios.select(intent.scenario)
         }
     }
 

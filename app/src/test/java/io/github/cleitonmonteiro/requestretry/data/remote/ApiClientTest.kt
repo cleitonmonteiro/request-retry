@@ -2,7 +2,6 @@ package io.github.cleitonmonteiro.requestretry.data.remote
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
-import java.io.IOException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -20,71 +19,21 @@ import org.junit.Test
 class ApiClientTest {
 
     @Test
-    fun `execute succeeds immediately under ALWAYS_SUCCEED`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
-        val client = ApiClient(scenarios)
-
+    fun `execute passes the real call result through unchanged`() = runTest {
         // Act
-        val result = client.execute { "payload" }
+        val result = ApiClient().execute { "payload" }
 
         // Assert
         assertEquals("payload", result)
     }
 
     @Test
-    fun `execute always fails under connection error`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.CONNECTION_ERROR) }
-        val client = ApiClient(scenarios)
-
+    fun `unexpected throwable crosses the boundary as a typed failure`() = runTest {
         // Act
-        val thrown = runCatching { client.execute { "payload" } }.exceptionOrNull()
+        val error = runCatching { ApiClient().execute { throw IllegalStateException("boom") } }.exceptionOrNull()
 
         // Assert
-        assertTrue(thrown is IOException)
-    }
-
-    @Test
-    fun `execute succeeds only from the third call under SUCCEED_ON_THIRD_ATTEMPT`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
-        val client = ApiClient(scenarios)
-
-        // Act
-        val firstAttempt = runCatching { client.execute { "payload" } }.exceptionOrNull()
-        val secondAttempt = runCatching { client.execute { "payload" } }.exceptionOrNull()
-        val thirdAttempt = client.execute { "payload" }
-
-        // Assert
-        assertTrue(firstAttempt is IOException)
-        assertTrue(secondAttempt is IOException)
-        assertEquals("payload", thirdAttempt)
-    }
-
-    @Test
-    fun `re-selecting the same scenario restarts the attempt count`() = runTest {
-        // Arrange: burn two attempts of SUCCEED_ON_THIRD_ATTEMPT, one short of success
-        val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
-        val client = ApiClient(scenarios)
-        runCatching { client.execute { "payload" } }
-        runCatching { client.execute { "payload" } }
-
-        // Act: re-tapping the same scenario chip should start the demo over
-        scenarios.select(Scenario.SUCCEED_ON_THIRD_ATTEMPT)
-        val afterReselect = runCatching { client.execute { "payload" } }.exceptionOrNull()
-
-        // Assert
-        assertTrue(afterReselect is IOException)
-    }
-
-    @Test
-    fun `simulated HTTP status crosses the data boundary as typed failure`() = runTest {
-        val scenarios = ScenarioHolder().apply { select(Scenario.HTTP_400) }
-        val error = runCatching { ApiClient(scenarios).execute { "payload" } }.exceptionOrNull()
-
         assertTrue(error is RequestFailureException)
-        assertEquals(RequestFailure.Http(400), (error as RequestFailureException).failure)
     }
 
     @Test
@@ -105,7 +54,7 @@ class ApiClientTest {
                 }
             }
         }
-        val client = ApiClient(ScenarioHolder())
+        val client = ApiClient()
 
         val error = runCatching {
             client.executeHttp { http.get("https://example.test").bodyAsText() }

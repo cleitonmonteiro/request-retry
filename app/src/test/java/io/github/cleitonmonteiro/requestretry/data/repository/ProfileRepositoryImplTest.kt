@@ -2,8 +2,6 @@ package io.github.cleitonmonteiro.requestretry.data.repository
 
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.ProfileRemoteDataSource
-import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
-import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.remote.mockHttpClient
 import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import kotlinx.coroutines.flow.first
@@ -16,9 +14,8 @@ class ProfileRepositoryImplTest {
     @Test
     fun `getProfile returns the mapped domain model`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
         val httpClient = mockHttpClient { """{"full_name":"Ada Lovelace","email_address":"ada@example.com"}""" }
-        val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(httpClient, ApiClient(scenarios)))
+        val repository = ProfileRepositoryImpl(ProfileRemoteDataSource(httpClient, ApiClient()))
 
         // Act
         val profile = repository.getProfile().first()

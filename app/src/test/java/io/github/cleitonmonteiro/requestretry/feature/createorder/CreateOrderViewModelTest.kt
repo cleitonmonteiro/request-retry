@@ -7,8 +7,6 @@ import io.github.cleitonmonteiro.requestretry.MainDispatcherRule
 import io.github.cleitonmonteiro.requestretry.data.remote.ApiClient
 import io.github.cleitonmonteiro.requestretry.data.remote.NewOrderRequestDto
 import io.github.cleitonmonteiro.requestretry.data.remote.OrdersRemoteDataSource
-import io.github.cleitonmonteiro.requestretry.data.remote.Scenario
-import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.repository.OrdersRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
@@ -48,9 +46,8 @@ class CreateOrderViewModelTest {
     @Test
     fun `submit creates an order from the form input`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
         val capturedBodies = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies) {
+        val viewModel = newViewModel(capturedBodies) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
 
@@ -69,8 +66,7 @@ class CreateOrderViewModelTest {
     @Test
     fun `successful submit emits its confirmation as a one-off effect`() = runTest {
         // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
-        val viewModel = newViewModel(scenarios, mutableListOf()) {
+        val viewModel = newViewModel(mutableListOf()) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
 
@@ -88,12 +84,17 @@ class CreateOrderViewModelTest {
 
     @Test
     fun `manual retries resend the submitted snapshot with stable identity`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.SUCCEED_ON_THIRD_ATTEMPT) }
+        // Arrange: the server rejects the first two attempts, then accepts the retry.
+        var calls = 0
         val capturedBodies = mutableListOf<String>()
         val capturedKeys = mutableListOf<String>()
         val capturedOperationIds = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies, capturedKeys, capturedOperationIds) {
+        val viewModel = newViewModel(
+            capturedBodies = capturedBodies,
+            capturedKeys = capturedKeys,
+            capturedOperationIds = capturedOperationIds,
+            status = { if (++calls < 3) HttpStatusCode.ServiceUnavailable else HttpStatusCode.Created },
+        ) {
             """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
         }
         viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
@@ -126,37 +127,11 @@ class CreateOrderViewModelTest {
         assertTrue(viewModel.state.value.result is OperationState.Succeeded)
     }
 
-    @Test
-    fun `changing the scenario after a submit does not resend the order`() = runTest {
-        // Arrange
-        val scenarios = ScenarioHolder().apply { select(Scenario.ALWAYS_SUCCEED) }
-        val capturedBodies = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies) {
-            """{"order_id":"A-2000","item_name":"Backpack","total_amount":"59.97"}"""
-        }
-        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
-        viewModel.onIntent(CreateOrderIntent.Submit)
-        advanceUntilIdle()
-        check(viewModel.state.value.result is OperationState.Succeeded)
-
-        // Act: tap a scenario chip after the order was already created
-        viewModel.onIntent(CreateOrderIntent.SelectScenario(Scenario.CONNECTION_ERROR))
-        advanceUntilIdle()
-
-        // Assert: POST /orders is not idempotent — a scenario change must never replay it
-        assertEquals(1, capturedBodies.size)
-        assertEquals(
-            Order(id = "A-2000", item = "Backpack", total = 59.97),
-            (viewModel.state.value.result as OperationState.Succeeded).data,
-        )
-        assertEquals(Scenario.CONNECTION_ERROR, viewModel.state.value.scenario)
-    }
-
     private fun newViewModel(
-        scenarios: ScenarioHolder,
         capturedBodies: MutableList<String>,
         capturedKeys: MutableList<String> = mutableListOf(),
         capturedOperationIds: MutableList<String> = mutableListOf(),
+        status: () -> HttpStatusCode = { HttpStatusCode.Created },
         respondBody: () -> String,
     ): CreateOrderViewModel {
         val engineConfig = MockEngineConfig().apply {
@@ -167,20 +142,20 @@ class CreateOrderViewModelTest {
                 capturedOperationIds += request.headers["X-Operation-ID"].orEmpty()
                 respond(
                     content = respondBody(),
-                    status = HttpStatusCode.Created,
+                    status = status(),
                     headers = headersOf(HttpHeaders.ContentType, "application/json"),
                 )
             }
         }
         val httpClient = HttpClient(MockEngine(engineConfig)) {
+            expectSuccess = true
             install(ContentNegotiation) {
                 json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
             }
         }
-        val repository = OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient(scenarios)))
+        val repository = OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient()))
         return CreateOrderViewModel(
             createOrder = CreateOrderUseCase(repository),
-            scenarios = scenarios,
             operationControllers = OperationControllerFactory(),
         )
     }
