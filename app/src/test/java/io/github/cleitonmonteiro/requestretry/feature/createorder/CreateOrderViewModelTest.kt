@@ -12,7 +12,6 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.data.repository.OrdersRepositoryImpl
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
 import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import io.ktor.client.HttpClient
@@ -153,38 +152,6 @@ class CreateOrderViewModelTest {
         assertEquals(Scenario.CONNECTION_ERROR, viewModel.state.value.scenario)
     }
 
-    @Test
-    fun `lost responses become outcome unknown and verify without a new mutation`() = runTest {
-        val scenarios = ScenarioHolder().apply { select(Scenario.RESPONSE_LOST_AFTER_COMMIT) }
-        val capturedBodies = mutableListOf<String>()
-        val viewModel = newViewModel(scenarios, capturedBodies) {
-            """{"order_id":"A-2000","item_name":"Backpack","total_amount":"19.99"}"""
-        }
-        viewModel.onIntent(CreateOrderIntent.ChangeItemName("Backpack"))
-        viewModel.onIntent(CreateOrderIntent.Submit)
-        advanceUntilIdle()
-
-        assertTrue(viewModel.state.value.result is OperationState.Failed)
-        viewModel.onIntent(CreateOrderIntent.Retry)
-        advanceUntilIdle()
-        assertTrue(viewModel.state.value.result is OperationState.Failed)
-        viewModel.onIntent(CreateOrderIntent.Retry)
-        advanceUntilIdle()
-
-        assertTrue(viewModel.state.value.result is OperationState.OutcomeUnknown)
-        assertEquals(3, capturedBodies.size)
-
-        scenarios.select(Scenario.ALWAYS_SUCCEED)
-        viewModel.onIntent(CreateOrderIntent.VerifyStatus)
-        advanceUntilIdle()
-
-        assertEquals(
-            "A-2000",
-            (viewModel.state.value.result as OperationState.Succeeded).data.id,
-        )
-        assertEquals(3, capturedBodies.size)
-    }
-
     private fun newViewModel(
         scenarios: ScenarioHolder,
         capturedBodies: MutableList<String>,
@@ -195,14 +162,6 @@ class CreateOrderViewModelTest {
         val engineConfig = MockEngineConfig().apply {
             dispatcher = Dispatchers.Unconfined
             addHandler { request ->
-                if (request.url.encodedPath.startsWith("/operations/")) {
-                    val operationId = request.url.encodedPath.substringAfterLast('/')
-                    return@addHandler respond(
-                        content = """{"operation_id":"$operationId","status":"SUCCEEDED","order":${respondBody()}}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
-                    )
-                }
                 capturedBodies += request.body.toByteArray().decodeToString()
                 capturedKeys += request.headers["Idempotency-Key"].orEmpty()
                 capturedOperationIds += request.headers["X-Operation-ID"].orEmpty()
@@ -221,7 +180,6 @@ class CreateOrderViewModelTest {
         val repository = OrdersRepositoryImpl(OrdersRemoteDataSource(httpClient, ApiClient(scenarios)))
         return CreateOrderViewModel(
             createOrder = CreateOrderUseCase(repository),
-            verifyOrder = VerifyOrderOperationUseCase(repository),
             scenarios = scenarios,
             operationControllers = OperationControllerFactory(),
         )

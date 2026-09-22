@@ -53,17 +53,20 @@ class FailurePolicyTest {
     }
 
     @Test
-    fun `ambiguous idempotent command verifies instead of retrying`() {
-        val spec = OperationProfiles.foregroundIdempotentCommand(
-            name = OperationName("create_order"),
-            operationId = OperationId("command"),
-            backoff = FixedBackoff(1.seconds),
-        ).copy(maxAttempts = 1)
-        val failure = RequestFailure.Connection(mayHaveReachedServer = true)
+    fun `offline is the only failure that offers retry once attempts are exhausted`() {
+        val spec = readSpec.copy(maxAttempts = 1)
 
+        val offlineDecision = ConservativeRetryDecider.decide(
+            RetryContext(spec, RequestFailure.Offline, attempt = 1),
+        )
+        assertEquals(RetryDecision.Stop(PublicFailure.Offline, RecoveryAction.Retry), offlineDecision)
+
+        val connectionDecision = ConservativeRetryDecider.decide(
+            RetryContext(spec, RequestFailure.Connection, attempt = 1),
+        )
         assertEquals(
-            RetryDecision.VerifyStatus,
-            ConservativeRetryDecider.decide(RetryContext(spec, failure, attempt = 1)),
+            RetryDecision.Stop(PublicFailure.TemporarilyUnavailable, RecoveryAction.Leave),
+            connectionDecision,
         )
     }
 }

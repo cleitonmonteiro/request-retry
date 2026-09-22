@@ -95,43 +95,6 @@ class OperationControllerTest {
     }
 
     @Test
-    fun `ambiguous command exposes verification and never repeats mutation`() = runTest {
-        var mutations = 0
-        var verifications = 0
-        val controller = OperationController(
-            scope = backgroundScope,
-            specFactory = OperationSpecFactory<String> {
-                OperationProfiles.foregroundIdempotentCommand(
-                    OperationName("create_order"),
-                    OperationId("unknown"),
-                    backoff = FixedBackoff(Duration.ZERO),
-                ).copy(maxAttempts = 1)
-            },
-            executor = RetryExecutor(),
-            call = OneShotCall { _, _ ->
-                mutations++
-                throw RequestFailureException(
-                    RequestFailure.Connection(mayHaveReachedServer = true),
-                )
-            },
-            verifier = StatusVerifier {
-                verifications++
-                VerificationResult.Confirmed("confirmed")
-            },
-        )
-
-        controller.start("snapshot")
-        runCurrent()
-        assertTrue(controller.state.value is OperationState.OutcomeUnknown)
-
-        controller.verifyStatus()
-        runCurrent()
-        assertEquals("confirmed", (controller.state.value as OperationState.Succeeded).data)
-        assertEquals(1, mutations)
-        assertEquals(1, verifications)
-    }
-
-    @Test
     fun `concurrent manual retries spend only one new execution`() = runTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0

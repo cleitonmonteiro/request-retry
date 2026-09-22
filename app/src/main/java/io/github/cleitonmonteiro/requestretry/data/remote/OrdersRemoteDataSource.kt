@@ -5,7 +5,6 @@ import io.ktor.client.call.body
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.header
-import io.ktor.client.request.get
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import javax.inject.Inject
@@ -26,9 +25,5 @@ class OrdersRemoteDataSource @Inject constructor(
             header("Idempotency-Key", idempotencyKey)
             setBody(request)
         }.body()
-    }
-
-    suspend fun fetchOperationStatus(operationId: String): OrderOperationStatusDto = apiClient.executeHttp {
-        httpClient.get("$BASE_URL/operations/$operationId").body()
     }
 }

@@ -62,7 +62,7 @@ private fun CreateOrderScreen(
             selected = state.scenario,
             onSelect = { onIntent(CreateOrderIntent.SelectScenario(it)) },
         )
-        val showingFeedback = state.result is OperationState.Failed || state.result is OperationState.OutcomeUnknown
+        val showingFeedback = state.result is OperationState.Failed
         if (!showingFeedback) OutlinedTextField(
             value = state.input.itemName,
             onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },
@@ -109,8 +109,6 @@ private fun CreateOrderScreen(
                     onIntent(
                         when (recovery) {
                             RecoveryAction.Retry -> CreateOrderIntent.Retry
-                            RecoveryAction.EditInput -> CreateOrderIntent.EditInput
-                            is RecoveryAction.VerifyStatus -> CreateOrderIntent.VerifyStatus
                             else -> CreateOrderIntent.Leave
                         },
                     )

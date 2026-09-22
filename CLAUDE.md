@@ -29,11 +29,10 @@ The app intentionally has only two journeys:
   `IdempotencyKey`, at most three manual attempts, and cancels any previous execution when started
   again.
 
-Create Order keeps its immutable submitted snapshot for retries and foreground status verification.
-It does not survive process death: Room, WorkManager, and background reconciliation are out of
-scope. `GET /operations/{operationId}` remains the authority for an ambiguous response while the
-screen session is still alive. The mock persists idempotency records in `server/.operations.json`,
-returns the original result for an identical replay, and returns 409 for mismatched input.
+Create Order keeps its immutable submitted snapshot for retries. It does not survive process
+death: Room, WorkManager, and background reconciliation are out of scope. The mock persists
+idempotency records in `server/.operations.json`, returns the original result for an identical
+replay, and returns 409 for mismatched input.
 
 ## Resilience architecture
 
@@ -47,15 +46,14 @@ sanitized retry telemetry. It never makes a second HTTP call automatically: afte
 user must explicitly retry. Ktor request retry is not
 installed and OkHttp connection retry is disabled.
 
-`OperationController` owns one `StateFlow<OperationState<T>>`, serializes `start`, `retry`,
-`verifyStatus`, and `reset` through a mailbox, captures immutable session input, and rejects stale
-results with a session token. It models running, cooldown, success, failure, and unknown outcome
-explicitly.
+`OperationController` owns one `StateFlow<OperationState<T>>`, serializes `start` and `retry`
+through a mailbox, captures immutable session input, and rejects stale results with a session
+token. It models running, cooldown, success, and failure explicitly.
 
-`OperationSpec` has only operation identity/name, read-vs-idempotent safety, attempts, and backoff.
-The controller always cancels a previous execution when a new start arrives. Do not reintroduce
-queue, join, reject, retry-budget, circuit-breaker, bulkhead, automatic-auth-refresh, or
-background-sync abstractions into this study app.
+`OperationSpec` has only operation identity/name, attempts, and backoff. The controller always
+cancels a previous execution when a new start arrives. Do not reintroduce queue, join, reject,
+retry-budget, circuit-breaker, bulkhead, automatic-auth-refresh, background-sync, or
+ambiguous-outcome/status-verification abstractions into this study app.
 
 ## Boundaries and tests
 
@@ -69,5 +67,4 @@ background-sync abstractions into this study app.
   lifecycle-aware effects. Scenario changes reload Profile only and never replay Create Order.
 - JVM tests use JUnit4, virtual coroutine time, fakes, and Ktor `MockEngine`; no Hilt graph or
   mocking library. Cover the typed failure matrix, backoff, cancellation, stale
-  results, cancellation of previous executions, stable request identity, unknown outcome, and foreground
-  status verification.
+  results, cancellation of previous executions, and stable request identity.

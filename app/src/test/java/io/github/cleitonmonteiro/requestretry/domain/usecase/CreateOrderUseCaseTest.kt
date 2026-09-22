@@ -4,7 +4,6 @@ import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
-import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
@@ -51,9 +50,6 @@ class CreateOrderUseCaseTest {
     ) : OrdersRepository {
         override fun createOrder(request: NewOrderRequest): Flow<Order> =
             failure?.let { flow { throw it } } ?: flowOf(requireNotNull(created))
-
-        override fun getOperationStatus(operationId: OperationId): Flow<OrderOperationStatus> =
-            flowOf(OrderOperationStatus.Unknown)
     }
 
     private fun request(quantity: Int) = NewOrderRequest(

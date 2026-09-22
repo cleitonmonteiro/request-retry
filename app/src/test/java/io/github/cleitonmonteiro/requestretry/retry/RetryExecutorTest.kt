@@ -29,9 +29,7 @@ class RetryExecutorTest {
                 attempt = 1,
                 call = OneShotCall<Unit, String> { _, _ ->
                     calls++
-                    throw RequestFailureException(
-                        RequestFailure.Connection(mayHaveReachedServer = false),
-                    )
+                    throw RequestFailureException(RequestFailure.Connection)
                 },
                 onProgress = progress::add,
             )
@@ -75,9 +73,7 @@ class RetryExecutorTest {
                 spec = readSpec(backoff = FixedBackoff(5.seconds)),
                 attempt = 1,
                 call = OneShotCall<Unit, String> { _, _ ->
-                    throw RequestFailureException(
-                        RequestFailure.Connection(mayHaveReachedServer = false),
-                    )
+                    throw RequestFailureException(RequestFailure.Connection)
                 },
                 onProgress = {},
             )

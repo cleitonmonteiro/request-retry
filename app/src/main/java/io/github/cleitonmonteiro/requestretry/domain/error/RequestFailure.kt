@@ -5,7 +5,7 @@ import kotlin.time.Duration
 /** Stable failure vocabulary shared by data, resilience, and presentation layers. */
 sealed interface RequestFailure {
     data object Offline : RequestFailure
-    data class Connection(val mayHaveReachedServer: Boolean) : RequestFailure
+    data object Connection : RequestFailure
 
     data class Http(
         val statusCode: Int,

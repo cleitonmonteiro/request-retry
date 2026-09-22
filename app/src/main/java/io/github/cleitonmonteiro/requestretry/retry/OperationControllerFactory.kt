@@ -21,7 +21,6 @@ class OperationControllerFactory @Inject constructor(
     fun <I, O> create(
         scope: CoroutineScope,
         specFactory: OperationSpecFactory<I>,
-        verifier: StatusVerifier<I, O>? = null,
         call: OneShotCall<I, O>,
     ): OperationController<I, O> = OperationController(
         scope = scope,
@@ -32,6 +31,5 @@ class OperationControllerFactory @Inject constructor(
             observer = observer,
         ),
         call = call,
-        verifier = verifier,
     )
 }

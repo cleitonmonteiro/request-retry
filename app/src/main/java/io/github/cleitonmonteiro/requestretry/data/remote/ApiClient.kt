@@ -29,20 +29,13 @@ class ApiClient @Inject constructor(
         val scenario = scenarios.scenario.value
         val simulatedError = when (scenario) {
             Scenario.ALWAYS_SUCCEED -> false
-            Scenario.CONNECTION_ERROR, Scenario.HTTP_400, Scenario.HTTP_429, Scenario.HTTP_503,
-            Scenario.RESPONSE_LOST_AFTER_COMMIT,
-            -> true
+            Scenario.CONNECTION_ERROR, Scenario.HTTP_400, Scenario.HTTP_429, Scenario.HTTP_503 -> true
             Scenario.SUCCEED_ON_THIRD_ATTEMPT -> attempt < 3
         }
         if (simulatedError) {
             throw when (scenario) {
                 Scenario.CONNECTION_ERROR, Scenario.SUCCEED_ON_THIRD_ATTEMPT ->
-                    RequestFailureException(
-                        RequestFailure.Connection(mayHaveReachedServer = false),
-                    )
-                Scenario.RESPONSE_LOST_AFTER_COMMIT -> RequestFailureException(
-                    RequestFailure.Connection(mayHaveReachedServer = true),
-                )
+                    RequestFailureException(RequestFailure.Connection)
                 Scenario.HTTP_400 -> RequestFailureException(RequestFailure.Http(400))
                 Scenario.HTTP_429 -> RequestFailureException(RequestFailure.Http(429, retryAfter = kotlin.time.Duration.ZERO))
                 Scenario.HTTP_503 -> RequestFailureException(RequestFailure.Http(503))

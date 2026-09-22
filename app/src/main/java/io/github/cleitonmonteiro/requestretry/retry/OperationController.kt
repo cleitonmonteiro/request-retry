@@ -1,7 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import java.time.Instant
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -13,19 +12,6 @@ import kotlinx.coroutines.launch
 /** Creates the immutable operation policy from the submitted input snapshot. */
 fun interface OperationSpecFactory<in I> {
     fun create(input: I): OperationSpec
-}
-
-/** Result of asking the server to confirm an operation with an uncertain outcome. */
-sealed interface VerificationResult<out T> {
-    data class Confirmed<T>(val data: T) : VerificationResult<T>
-    data class Rejected(val failure: PublicFailure, val recovery: RecoveryAction) : VerificationResult<Nothing>
-    data object StillProcessing : VerificationResult<Nothing>
-    data object Unknown : VerificationResult<Nothing>
-}
-
-/** Confirms an ambiguous remote mutation without issuing the mutation again. */
-fun interface StatusVerifier<in I, out O> {
-    suspend fun verify(input: I): VerificationResult<O>
 }
 
 /** Provides wall-clock time so controller state remains testable. */
@@ -47,7 +33,6 @@ class OperationController<I, O>(
     private val specFactory: OperationSpecFactory<I>,
     private val executor: RetryExecutor,
     private val call: OneShotCall<I, O>,
-    private val verifier: StatusVerifier<I, O>? = null,
     private val wallClock: WallClock = SystemWallClock,
 ) {
     /** Immutable command snapshot that prevents retries from observing later form edits. */
@@ -83,39 +68,6 @@ class OperationController<I, O>(
             if (failed.recovery != RecoveryAction.Retry) return@trySend
             val session = current ?: return@trySend
             begin(session.input, session.spec, failed.attemptsUsed + 1)
-        }
-    }
-
-    fun reset() {
-        mailbox.trySend {
-            if (executionJob?.isActive == true) return@trySend
-            current = null
-            _state.value = OperationState.Idle
-        }
-    }
-
-    fun verifyStatus() {
-        mailbox.trySend {
-            val unknown = _state.value as? OperationState.OutcomeUnknown ?: return@trySend
-            val session = current ?: return@trySend
-            val statusVerifier = verifier ?: return@trySend
-            val token = session.token
-            _state.value = OperationState.Running(
-                operationId = unknown.operationId,
-                attempt = 1,
-                maxAttempts = 1,
-                startedAt = wallClock.now(),
-            )
-            executionJob = scope.launch {
-                val result = try {
-                    statusVerifier.verify(session.input)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Throwable) {
-                    VerificationResult.Unknown
-                }
-                mailbox.send { handleVerification(token, result) }
-            }
         }
     }
 
@@ -184,34 +136,6 @@ class OperationController<I, O>(
                 failure = outcome.failure,
                 recovery = outcome.recovery,
                 attemptsUsed = outcome.attemptsUsed,
-            )
-            is ExecutionOutcome.Unknown -> OperationState.OutcomeUnknown(
-                operationId = outcome.operationId,
-                recovery = RecoveryAction.VerifyStatus(outcome.operationId),
-            )
-        }
-        executionJob = null
-    }
-
-    private fun handleVerification(token: Long, result: VerificationResult<O>) {
-        val session = current?.takeIf { it.token == token } ?: return
-        _state.value = when (result) {
-            is VerificationResult.Confirmed -> OperationState.Succeeded(
-                operationId = session.spec.operationId,
-                data = result.data,
-                attemptsUsed = 1,
-            )
-            is VerificationResult.Rejected -> OperationState.Failed(
-                operationId = session.spec.operationId,
-                failure = result.failure,
-                recovery = result.recovery,
-                attemptsUsed = 1,
-            )
-            VerificationResult.StillProcessing,
-            VerificationResult.Unknown,
-            -> OperationState.OutcomeUnknown(
-                operationId = session.spec.operationId,
-                recovery = RecoveryAction.VerifyStatus(session.spec.operationId),
             )
         }
         executionJob = null

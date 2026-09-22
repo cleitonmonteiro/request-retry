@@ -13,7 +13,6 @@ enum class Scenario {
     HTTP_400,
     HTTP_429,
     HTTP_503,
-    RESPONSE_LOST_AFTER_COMMIT,
     SUCCEED_ON_THIRD_ATTEMPT,
 }
 

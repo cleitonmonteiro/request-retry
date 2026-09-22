@@ -63,20 +63,6 @@ fun <T> OperationStateScaffold(
                 attemptsUsed = state.attemptsUsed,
                 onRecovery = onRecovery,
             )
-            is OperationState.OutcomeUnknown -> {
-                Text(
-                    text = stringResource(R.string.outcome_unknown_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = stringResource(R.string.outcome_unknown_description),
-                    textAlign = TextAlign.Center,
-                )
-                Button(onClick = { onRecovery(state.recovery) }, modifier = Modifier.padding(top = 16.dp)) {
-                    Text(stringResource(R.string.action_verify_status))
-                }
-            }
         }
     }
 }
@@ -110,7 +96,6 @@ private data class FailureCopy(@param:StringRes val title: Int, @param:StringRes
 private fun PublicFailure.copyResources(): FailureCopy = when (this) {
     PublicFailure.Offline -> FailureCopy(R.string.failure_offline_title, R.string.failure_offline_description)
     PublicFailure.TemporarilyUnavailable -> FailureCopy(R.string.failure_temporary_title, R.string.failure_temporary_description)
-    PublicFailure.Validation -> FailureCopy(R.string.failure_validation_title, R.string.failure_validation_description)
     PublicFailure.Local -> FailureCopy(R.string.failure_protocol_title, R.string.failure_protocol_description)
     PublicFailure.Unknown -> FailureCopy(R.string.failure_unknown_title, R.string.failure_unknown_description)
 }
@@ -118,8 +103,6 @@ private fun PublicFailure.copyResources(): FailureCopy = when (this) {
 @StringRes
 private fun RecoveryAction.labelResource(): Int = when (this) {
     RecoveryAction.Retry -> R.string.action_try_again
-    RecoveryAction.EditInput -> R.string.action_edit_input
-    is RecoveryAction.VerifyStatus -> R.string.action_verify_status
     RecoveryAction.ContactSupport -> R.string.action_contact_support
     RecoveryAction.Leave -> R.string.action_leave
 }

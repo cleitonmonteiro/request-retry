@@ -8,8 +8,6 @@ import io.github.cleitonmonteiro.requestretry.data.remote.ScenarioHolder
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
 import io.github.cleitonmonteiro.requestretry.domain.usecase.CreateOrderUseCase
-import io.github.cleitonmonteiro.requestretry.domain.usecase.VerifyOrderOperationUseCase
-import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
@@ -17,10 +15,6 @@ import io.github.cleitonmonteiro.requestretry.retry.OperationName
 import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
 import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
-import io.github.cleitonmonteiro.requestretry.retry.PublicFailure
-import io.github.cleitonmonteiro.requestretry.retry.RecoveryAction
-import io.github.cleitonmonteiro.requestretry.retry.StatusVerifier
-import io.github.cleitonmonteiro.requestretry.retry.VerificationResult
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,8 +50,6 @@ enum class OrderValidationError { ITEM_REQUIRED, QUANTITY_MUST_BE_POSITIVE }
 sealed interface CreateOrderIntent {
     data object Submit : CreateOrderIntent
     data object Retry : CreateOrderIntent
-    data object VerifyStatus : CreateOrderIntent
-    data object EditInput : CreateOrderIntent
     data object Leave : CreateOrderIntent
     data class ChangeItemName(val value: String) : CreateOrderIntent
     data class ChangeQuantity(val value: String) : CreateOrderIntent
@@ -81,7 +73,6 @@ sealed interface CreateOrderEffect {
 @HiltViewModel
 class CreateOrderViewModel @Inject constructor(
     private val createOrder: CreateOrderUseCase,
-    verifyOrder: VerifyOrderOperationUseCase,
     private val scenarios: ScenarioHolder,
     operationControllers: OperationControllerFactory,
 ) : ViewModel() {
@@ -94,17 +85,6 @@ class CreateOrderViewModel @Inject constructor(
                 name = OperationName("create_order"),
                 operationId = request.operationId,
             )
-        },
-        verifier = StatusVerifier { request ->
-            when (val status = verifyOrder(request.operationId)) {
-                OrderOperationStatus.Processing -> VerificationResult.StillProcessing
-                is OrderOperationStatus.Succeeded -> VerificationResult.Confirmed(status.order)
-                is OrderOperationStatus.Rejected -> VerificationResult.Rejected(
-                    PublicFailure.Validation,
-                    RecoveryAction.EditInput,
-                )
-                OrderOperationStatus.Unknown -> VerificationResult.Unknown
-            }
         },
     ) { request, _ -> createOrder(request).single() }
     private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)
@@ -139,8 +119,6 @@ class CreateOrderViewModel @Inject constructor(
         when (intent) {
             CreateOrderIntent.Submit -> submit()
             CreateOrderIntent.Retry -> controller.retry()
-            CreateOrderIntent.VerifyStatus -> controller.verifyStatus()
-            CreateOrderIntent.EditInput -> controller.reset()
             CreateOrderIntent.Leave -> _effects.trySend(CreateOrderEffect.NavigateBack)
             is CreateOrderIntent.ChangeItemName -> {
                 _formInput.update { it.copy(itemName = intent.value) }

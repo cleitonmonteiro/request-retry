@@ -8,14 +8,10 @@ import kotlin.time.Duration
 /** Stable name used to select a retry profile and label sanitized telemetry. */
 data class OperationName(val value: String)
 
-/** Declares whether repeating an operation can be made safe by its stable identity. */
-enum class OperationSafety { READ_ONLY, IDEMPOTENT_COMMAND }
-
 /** Immutable, validated execution policy for one logical operation. */
 data class OperationSpec(
     val operationId: OperationId,
     val name: OperationName,
-    val safety: OperationSafety,
     val maxAttempts: Int,
     val backoff: BackoffStrategy,
 ) {
@@ -43,9 +39,6 @@ fun interface OneShotCall<in I, out O> {
 /** UI-safe actions offered after a terminal or uncertain operation outcome. */
 sealed interface RecoveryAction {
     data object Retry : RecoveryAction
-    data object EditInput : RecoveryAction
-    /** Asks the UI to query the server for the supplied operation identity. */
-    data class VerifyStatus(val operationId: OperationId) : RecoveryAction
     data object ContactSupport : RecoveryAction
     data object Leave : RecoveryAction
 }
@@ -54,7 +47,6 @@ sealed interface RecoveryAction {
 sealed interface PublicFailure {
     data object Offline : PublicFailure
     data object TemporarilyUnavailable : PublicFailure
-    data object Validation : PublicFailure
     data object Local : PublicFailure
     data object Unknown : PublicFailure
 }
@@ -101,12 +93,6 @@ sealed interface OperationState<out T> {
         val recovery: RecoveryAction,
         val attemptsUsed: Int,
     ) : OperationState<Nothing>
-
-    /** A mutation may have reached the server and needs explicit status verification. */
-    data class OutcomeUnknown(
-        val operationId: OperationId,
-        val recovery: RecoveryAction.VerifyStatus,
-    ) : OperationState<Nothing>
 }
 
 /** Internal events emitted by the executor while a call is in progress. */
@@ -131,7 +117,6 @@ internal sealed interface ExecutionOutcome<out T> {
         val recovery: RecoveryAction,
         val attemptsUsed: Int,
     ) : ExecutionOutcome<Nothing>
-    data class Unknown(val operationId: OperationId) : ExecutionOutcome<Nothing>
 }
 
 /** Converts an unexpected throwable into a stable [RequestFailure] for policy evaluation. */

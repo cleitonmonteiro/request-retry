@@ -27,7 +27,7 @@ internal suspend fun Throwable.toRequestFailureException(now: Instant = Instant.
             retryAfter = parseRetryAfter(response.headers["Retry-After"], now),
             requestId = response.headers["X-Request-ID"],
         )
-        is UnknownHostException -> RequestFailure.Connection(mayHaveReachedServer = false)
+        is UnknownHostException -> RequestFailure.Connection
         is SSLException -> RequestFailure.Generic
         is SerializationException -> RequestFailure.Generic
         is IOException -> timeoutOrConnectionFailure()
@@ -56,7 +56,7 @@ private fun IOException.timeoutOrConnectionFailure(): RequestFailure {
     return if (name.contains("Timeout", ignoreCase = true)) {
         RequestFailure.Generic
     } else {
-        RequestFailure.Connection(mayHaveReachedServer = false)
+        RequestFailure.Connection
     }
 }
 

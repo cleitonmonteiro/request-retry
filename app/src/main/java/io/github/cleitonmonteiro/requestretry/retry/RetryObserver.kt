@@ -44,7 +44,7 @@ object NoOpRetryObserver : RetryObserver
 
 internal fun RequestFailure.telemetryCategory(): String = when (this) {
     RequestFailure.Offline -> "offline"
-    is RequestFailure.Connection -> "connection"
+    RequestFailure.Connection -> "connection"
     is RequestFailure.Http -> "http_${statusCode / 100}xx"
     RequestFailure.Generic -> "generic"
     RequestFailure.Local -> "local"

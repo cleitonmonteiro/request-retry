@@ -4,9 +4,7 @@ import io.github.cleitonmonteiro.requestretry.data.mapper.toDomain
 import io.github.cleitonmonteiro.requestretry.data.mapper.toDto
 import io.github.cleitonmonteiro.requestretry.data.remote.OrdersRemoteDataSource
 import io.github.cleitonmonteiro.requestretry.domain.model.NewOrderRequest
-import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.domain.model.Order
-import io.github.cleitonmonteiro.requestretry.domain.model.OrderOperationStatus
 import io.github.cleitonmonteiro.requestretry.domain.repository.OrdersRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -26,8 +24,4 @@ class OrdersRepositoryImpl @Inject constructor(
                 ).toDomain(),
             )
         }
-
-    override fun getOperationStatus(operationId: OperationId): Flow<OrderOperationStatus> = flow {
-        emit(remote.fetchOperationStatus(operationId.value).toDomain())
-    }
 }

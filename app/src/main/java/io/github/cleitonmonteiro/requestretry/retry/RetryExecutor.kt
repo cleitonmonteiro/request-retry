@@ -40,10 +40,6 @@ class RetryExecutor(
             AttemptTelemetryResult(spec.name, attempt, false, result.telemetryCategory()),
         )
         return when (val decision = decideSafely(spec, result, attempt)) {
-            RetryDecision.VerifyStatus -> {
-                observer.onOperationFinished(OperationTelemetryResult(spec.name, "outcome_unknown", attempt))
-                ExecutionOutcome.Unknown(spec.operationId)
-            }
             is RetryDecision.Stop -> finishFailure(spec, decision.failure, decision.recovery, attempt)
             is RetryDecision.Retry -> {
                 val localDelay = try {

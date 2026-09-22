@@ -11,7 +11,6 @@ object OperationProfiles {
     ): OperationSpec = OperationSpec(
         operationId = operationId,
         name = name,
-        safety = OperationSafety.READ_ONLY,
         maxAttempts = 3,
         backoff = backoff,
     )
@@ -23,7 +22,6 @@ object OperationProfiles {
     ): OperationSpec = OperationSpec(
         operationId = operationId,
         name = name,
-        safety = OperationSafety.IDEMPOTENT_COMMAND,
         maxAttempts = 3,
         backoff = backoff,
     )

@@ -14,10 +14,10 @@ object DefaultFailureClassifier : FailureClassifier {
         if (error is CancellationException) throw error
         return when (error) {
             is RequestFailureException -> normalize(error.failure)
-            is UnknownHostException -> RequestFailure.Connection(mayHaveReachedServer = false)
+            is UnknownHostException -> RequestFailure.Connection
             is SSLException -> RequestFailure.Generic
             is IllegalArgumentException -> RequestFailure.Local
-            is IOException -> RequestFailure.Connection(mayHaveReachedServer = false)
+            is IOException -> RequestFailure.Connection
             else -> RequestFailure.Unknown
         }
     }
@@ -48,7 +48,6 @@ sealed interface RetryDecision {
     ) : RetryDecision
     /** Ends the operation with safe public feedback and a recovery action. */
     data class Stop(val failure: PublicFailure, val recovery: RecoveryAction) : RetryDecision
-    data object VerifyStatus : RetryDecision
 }
 
 /** Applies operation safety and attempt limits to a classified failure. */
@@ -65,20 +64,10 @@ object ConservativeRetryDecider : RetryDecider {
         if (terminal != null) return terminal
 
         val retryable = retryableDecision(failure)
-        if (retryable != null) {
-            if (context.attempt < spec.maxAttempts) return retryable
-            if (isAmbiguousIdempotentMutation(failure, spec.safety)) return RetryDecision.VerifyStatus
-            return RetryDecision.Stop(publicFailure(failure), RecoveryAction.Leave)
-        }
+        if (retryable != null && context.attempt < spec.maxAttempts) return retryable
 
-        if (isAmbiguousIdempotentMutation(failure, spec.safety)) return RetryDecision.VerifyStatus
-
-        val publicFailure = publicFailure(failure)
-        val recovery = if (
-            spec.safety == OperationSafety.READ_ONLY ||
-            (failure == RequestFailure.Offline && spec.safety == OperationSafety.IDEMPOTENT_COMMAND)
-        ) RecoveryAction.Retry else RecoveryAction.Leave
-        return RetryDecision.Stop(publicFailure, recovery)
+        val recovery = if (failure == RequestFailure.Offline) RecoveryAction.Retry else RecoveryAction.Leave
+        return RetryDecision.Stop(publicFailure(failure), recovery)
     }
 
     private fun terminalDecision(failure: RequestFailure): RetryDecision.Stop? = when (failure) {
@@ -94,7 +83,7 @@ object ConservativeRetryDecider : RetryDecider {
 
     private fun retryableDecision(failure: RequestFailure): RetryDecision.Retry? = when (failure) {
         RequestFailure.Offline,
-        is RequestFailure.Connection,
+        RequestFailure.Connection,
         -> RetryDecision.Retry(publicFailure(failure), RetryReason.TransientTransport)
         is RequestFailure.Http -> when (failure.statusCode) {
             408, 425 -> RetryDecision.Retry(
@@ -117,22 +106,11 @@ object ConservativeRetryDecider : RetryDecider {
         RequestFailure.Offline -> PublicFailure.Offline
         RequestFailure.Generic -> PublicFailure.Unknown
         RequestFailure.Local -> PublicFailure.Local
-        is RequestFailure.Connection -> PublicFailure.TemporarilyUnavailable
+        RequestFailure.Connection -> PublicFailure.TemporarilyUnavailable
         is RequestFailure.Http -> when (failure.statusCode) {
             in 500..599 -> PublicFailure.TemporarilyUnavailable
             else -> PublicFailure.Unknown
         }
         RequestFailure.Unknown -> PublicFailure.Unknown
-    }
-
-    private fun isAmbiguousIdempotentMutation(
-        failure: RequestFailure,
-        safety: OperationSafety,
-    ): Boolean {
-        if (safety != OperationSafety.IDEMPOTENT_COMMAND) return false
-        return when (failure) {
-            is RequestFailure.Connection -> failure.mayHaveReachedServer
-            else -> false
-        }
     }
 }
