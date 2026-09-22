@@ -1,9 +1,8 @@
 package io.github.cleitonmonteiro.requestretry.data.observability
 
-import android.util.Log
-import io.github.cleitonmonteiro.requestretry.BuildConfig
 import io.github.cleitonmonteiro.requestretry.retry.AttemptTelemetryContext
 import io.github.cleitonmonteiro.requestretry.retry.AttemptTelemetryResult
+import io.github.cleitonmonteiro.requestretry.retry.BackoffDelayContext
 import io.github.cleitonmonteiro.requestretry.retry.OperationTelemetryContext
 import io.github.cleitonmonteiro.requestretry.retry.OperationTelemetryResult
 import io.github.cleitonmonteiro.requestretry.retry.RetryObserver
@@ -11,7 +10,9 @@ import io.github.cleitonmonteiro.requestretry.retry.RetryScheduledEvent
 import javax.inject.Inject
 
 /** Debug-only, payload-free observer. Production can replace this binding with metrics/tracing. */
-class SanitizedRetryObserver @Inject constructor() : RetryObserver {
+class SanitizedRetryObserver @Inject constructor(
+    private val logger: DebugLogger,
+) : RetryObserver {
     override fun onOperationStarted(context: OperationTelemetryContext) = log(
         "operation_started name=${context.operationName.value} max_attempts=${context.maxAttempts}",
     )
@@ -30,12 +31,14 @@ class SanitizedRetryObserver @Inject constructor() : RetryObserver {
             "delay_ms=${event.delay.inWholeMilliseconds} reason=${event.reason::class.simpleName}",
     )
 
+    override fun onBackoffDelayStarted(context: BackoffDelayContext) = log(
+        "backoff_delay_started name=${context.operationName.value} delay_ms=${context.delay.inWholeMilliseconds}",
+    )
+
     override fun onOperationFinished(result: OperationTelemetryResult) = log(
         "operation_finished name=${result.operationName.value} outcome=${result.outcome} " +
             "attempts=${result.attemptsUsed}",
     )
 
-    private fun log(message: String) {
-        if (BuildConfig.DEBUG) Log.d("RetryTelemetry", message)
-    }
+    private fun log(message: String) = logger.d("RetryTelemetry", message)
 }

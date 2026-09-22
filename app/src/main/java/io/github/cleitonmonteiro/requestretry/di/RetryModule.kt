@@ -7,6 +7,8 @@ import dagger.hilt.components.SingletonComponent
 import io.github.cleitonmonteiro.requestretry.retry.ConservativeRetryDecider
 import io.github.cleitonmonteiro.requestretry.retry.DefaultFailureClassifier
 import io.github.cleitonmonteiro.requestretry.retry.FailureClassifier
+import io.github.cleitonmonteiro.requestretry.data.observability.AndroidDebugLogger
+import io.github.cleitonmonteiro.requestretry.data.observability.DebugLogger
 import io.github.cleitonmonteiro.requestretry.data.observability.SanitizedRetryObserver
 import io.github.cleitonmonteiro.requestretry.retry.RetryDecider
 import io.github.cleitonmonteiro.requestretry.retry.RetryObserver
@@ -27,4 +29,8 @@ object RetryModule {
     @Provides
     @Singleton
     fun provideRetryObserver(observer: SanitizedRetryObserver): RetryObserver = observer
+
+    @Provides
+    @Singleton
+    fun provideDebugLogger(logger: AndroidDebugLogger): DebugLogger = logger
 }

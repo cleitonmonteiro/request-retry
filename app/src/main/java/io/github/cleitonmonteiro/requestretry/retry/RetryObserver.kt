@@ -9,6 +9,7 @@ interface RetryObserver {
     fun onAttemptStarted(context: AttemptTelemetryContext) = Unit
     fun onAttemptFinished(result: AttemptTelemetryResult) = Unit
     fun onRetryScheduled(event: RetryScheduledEvent) = Unit
+    fun onBackoffDelayStarted(context: BackoffDelayContext) = Unit
     fun onOperationFinished(result: OperationTelemetryResult) = Unit
 }
 
@@ -32,6 +33,9 @@ data class RetryScheduledEvent(
     val delay: Duration,
     val reason: RetryReason,
 )
+/** Metadata emitted right before the executor suspends for the backoff cooldown. */
+data class BackoffDelayContext(val operationName: OperationName, val delay: Duration)
+
 /** Sanitized terminal outcome metadata for a logical operation. */
 data class OperationTelemetryResult(
     val operationName: OperationName,

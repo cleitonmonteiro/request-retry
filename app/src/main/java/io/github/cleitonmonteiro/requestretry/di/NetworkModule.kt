@@ -1,11 +1,11 @@
 package io.github.cleitonmonteiro.requestretry.di
 
-import android.util.Log
 import io.github.cleitonmonteiro.requestretry.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import io.github.cleitonmonteiro.requestretry.data.observability.DebugLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -25,7 +25,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
+    fun provideHttpClient(debugLogger: DebugLogger): HttpClient = HttpClient(OkHttp) {
         expectSuccess = true
         engine {
             config { retryOnConnectionFailure(false) }
@@ -39,7 +39,7 @@ object NetworkModule {
         install(Logging) {
             logger = object : Logger {
                 override fun log(message: String) {
-                    Log.d("ApiClient", message)
+                    debugLogger.d("ApiClient", message)
                 }
             }
             sanitizeHeader { header ->

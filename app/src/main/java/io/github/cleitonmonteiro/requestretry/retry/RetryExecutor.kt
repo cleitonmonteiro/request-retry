@@ -56,7 +56,10 @@ class RetryExecutor(
                     RetryScheduledEvent(spec.name, attempt + 1, delayDuration, decision.reason),
                 )
                 onProgress(ExecutionProgress.RetryScheduled(attempt + 1, delayDuration, decision.reason))
-                if (delayDuration.isPositive()) delay(delayDuration)
+                if (delayDuration.isPositive()) {
+                    observer.onBackoffDelayStarted(BackoffDelayContext(spec.name, delayDuration))
+                    delay(delayDuration)
+                }
                 observer.onOperationFinished(OperationTelemetryResult(spec.name, "manual_retry_available", attempt))
                 ExecutionOutcome.ManualRetry(decision.failure, attempt)
             }
