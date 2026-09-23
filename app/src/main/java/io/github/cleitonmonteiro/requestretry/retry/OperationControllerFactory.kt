@@ -5,20 +5,16 @@ import io.github.cleitonmonteiro.requestretry.data.observability.NoOpDebugLogger
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 
-/** Creates controllers that share the injected failure policy and telemetry observer. */
+/** Creates controllers that share the injected retry executor and debug logger. */
 class OperationControllerFactory @Inject constructor(
-    private val failureClassifier: FailureClassifier,
-    private val retryDecider: RetryDecider,
-    private val observer: RetryObserver,
+    private val executor: RetryExecutor,
     private val logger: DebugLogger,
 ) {
     constructor(
         failureClassifier: FailureClassifier = DefaultFailureClassifier,
         retryDecider: RetryDecider = ConservativeRetryDecider,
     ) : this(
-        failureClassifier,
-        retryDecider,
-        NoOpRetryObserver,
+        RetryExecutor(failureClassifier, retryDecider, NoOpRetryObserver),
         NoOpDebugLogger,
     )
 
@@ -29,11 +25,7 @@ class OperationControllerFactory @Inject constructor(
     ): OperationController<I, O> = OperationController(
         scope = scope,
         specFactory = specFactory,
-        executor = RetryExecutor(
-            failureClassifier = failureClassifier,
-            retryDecider = retryDecider,
-            observer = observer,
-        ),
+        executor = executor,
         call = call,
         logger = logger,
     )

@@ -11,6 +11,7 @@ import io.github.cleitonmonteiro.requestretry.data.observability.AndroidDebugLog
 import io.github.cleitonmonteiro.requestretry.data.observability.DebugLogger
 import io.github.cleitonmonteiro.requestretry.data.observability.SanitizedRetryObserver
 import io.github.cleitonmonteiro.requestretry.retry.RetryDecider
+import io.github.cleitonmonteiro.requestretry.retry.RetryExecutor
 import io.github.cleitonmonteiro.requestretry.retry.RetryObserver
 import javax.inject.Singleton
 
@@ -33,4 +34,12 @@ object RetryModule {
     @Provides
     @Singleton
     fun provideDebugLogger(logger: AndroidDebugLogger): DebugLogger = logger
+
+    @Provides
+    @Singleton
+    fun provideRetryExecutor(
+        failureClassifier: FailureClassifier,
+        retryDecider: RetryDecider,
+        observer: RetryObserver,
+    ): RetryExecutor = RetryExecutor(failureClassifier, retryDecider, observer)
 }
