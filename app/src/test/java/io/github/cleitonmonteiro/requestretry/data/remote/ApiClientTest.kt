@@ -10,7 +10,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -37,7 +36,7 @@ class ApiClientTest {
     }
 
     @Test
-    fun `real HTTP failure captures backend code request id and retry-after`() = runTest {
+    fun `real HTTP failure captures backend code and request id`() = runTest {
         val http = HttpClient(MockEngine) {
             expectSuccess = true
             engine {
@@ -47,7 +46,6 @@ class ApiClientTest {
                         status = HttpStatusCode.TooManyRequests,
                         headers = headersOf(
                             HttpHeaders.ContentType to listOf("application/json"),
-                            HttpHeaders.RetryAfter to listOf("7"),
                             "X-Request-ID" to listOf("request-1"),
                         ),
                     )
@@ -64,7 +62,6 @@ class ApiClientTest {
             RequestFailure.Http(
                 statusCode = 429,
                 backendCode = "LIMITED",
-                retryAfter = 7.seconds,
                 requestId = "request-1",
             ),
             error.failure,

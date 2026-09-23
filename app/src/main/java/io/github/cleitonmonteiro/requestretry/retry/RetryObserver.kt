@@ -26,14 +26,21 @@ data class AttemptTelemetryResult(
     val succeeded: Boolean,
     val failureCategory: String?,
 )
-/** Cooldown metadata emitted before control is returned for a manual retry. */
+/**
+ * Cooldown metadata computed when a retryable failure decides its next-attempt cooldown. The
+ * cooldown itself is spent at the start of that next manual attempt, not before this event
+ * returns control to the user.
+ */
 data class RetryScheduledEvent(
     val operationName: OperationName,
     val nextAttempt: Int,
     val delay: Duration,
-    val reason: RetryReason,
 )
-/** Metadata emitted right before the executor suspends for the backoff cooldown. */
+
+/**
+ * Metadata emitted right before the executor suspends for a previously scheduled cooldown, at the
+ * start of the next manual attempt — not at the tail of the attempt that failed.
+ */
 data class BackoffDelayContext(val operationName: OperationName, val delay: Duration)
 
 /** Sanitized terminal outcome metadata for a logical operation. */

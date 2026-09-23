@@ -43,6 +43,7 @@ class OperationController<I, O>(
         val attempt: Int,
     ) {
         lateinit var job: Job
+        var pendingRetry: PendingRetry? = null
     }
 
     private val _state = MutableStateFlow<OperationState<O>>(OperationState.Idle)
@@ -69,7 +70,7 @@ class OperationController<I, O>(
                 val failed = _state.value as? OperationState.Failed ?: return@trySend
                 if (failed.recovery != RecoveryAction.Retry) return@trySend
                 val session = current ?: return@trySend
-                begin(session.input, session.spec, failed.attemptsUsed + 1)
+                begin(session.input, session.spec, failed.attemptsUsed + 1, session.pendingRetry)
             }.isSuccess,
         ) { "Operation mailbox is full" }
     }
@@ -79,7 +80,7 @@ class OperationController<I, O>(
         begin(input, specFactory.create(input), attempt = 1)
     }
 
-    private fun begin(input: I, spec: OperationSpec, attempt: Int) {
+    private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: PendingRetry? = null) {
         val session = Session(++nextToken, input, spec, attempt)
         current = session
         _state.value = OperationState.Running(
@@ -88,42 +89,37 @@ class OperationController<I, O>(
             startedAt = wallClock.now(),
         )
         session.job = scope.launch {
-            val outcome = executor.execute(input, spec, attempt, call) { progress ->
-                mailbox.send { publishProgress(session.token, progress) }
+            val outcome = executor.execute(input, spec, attempt, call, pendingRetry) { startedAttempt ->
+                mailbox.send { publishAttemptStarted(session.token, startedAttempt) }
             }
             mailbox.send { publishOutcome(session.token, outcome) }
         }
     }
 
-    private fun publishProgress(token: Long, progress: ExecutionProgress) {
+    private fun publishAttemptStarted(token: Long, attempt: Int) {
         val session = current?.takeIf { it.token == token } ?: return
-        _state.value = when (progress) {
-            is ExecutionProgress.AttemptStarted -> OperationState.Running(
-                attempt = progress.attempt,
-                maxAttempts = session.spec.maxAttempts,
-                startedAt = wallClock.now(),
-            )
-            is ExecutionProgress.RetryScheduled -> OperationState.BackingOff(
-                nextAttempt = progress.nextAttempt,
-                maxAttempts = session.spec.maxAttempts,
-                retryAt = wallClock.now().plusMillis(progress.delay.inWholeMilliseconds),
-                reason = progress.reason,
-            )
-        }
+        _state.value = OperationState.Running(
+            attempt = attempt,
+            maxAttempts = session.spec.maxAttempts,
+            startedAt = wallClock.now(),
+        )
     }
 
     private fun publishOutcome(token: Long, outcome: ExecutionOutcome<O>) {
-        if (current?.token != token) return
+        val session = current?.takeIf { it.token == token } ?: return
         _state.value = when (outcome) {
             is ExecutionOutcome.Success -> OperationState.Succeeded(
                 data = outcome.data,
                 attemptsUsed = outcome.attemptsUsed,
             )
-            is ExecutionOutcome.ManualRetry -> OperationState.Failed(
-                failure = outcome.failure,
-                recovery = RecoveryAction.Retry,
-                attemptsUsed = outcome.attemptsUsed,
-            )
+            is ExecutionOutcome.ManualRetry -> {
+                session.pendingRetry = outcome.pendingRetry
+                OperationState.Failed(
+                    failure = outcome.failure,
+                    recovery = RecoveryAction.Retry,
+                    attemptsUsed = outcome.attemptsUsed,
+                )
+            }
             is ExecutionOutcome.Failure -> OperationState.Failed(
                 failure = outcome.failure,
                 recovery = outcome.recovery,

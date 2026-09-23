@@ -5,9 +5,11 @@ package io.github.cleitonmonteiro.requestretry.retry
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailureException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -138,6 +140,93 @@ class OperationControllerTest {
         val failed = controller.state.value as OperationState.Failed
         assertEquals(3, failed.attemptsUsed)
         assertEquals(RecoveryAction.Leave, failed.recovery)
+    }
+
+    @Test
+    fun `retry waits out the cooldown before firing the next call`() = runTest {
+        var calls = 0
+        val spec = OperationProfiles.foreground(
+            OperationName("profile_read"),
+            FixedBackoff(3.seconds),
+        ).copy(maxAttempts = 3)
+        val controller = controller(backgroundScope, spec) {
+            calls++
+            if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
+            it
+        }
+
+        controller.start("snapshot")
+        runCurrent()
+        assertTrue(controller.state.value is OperationState.Failed)
+        assertEquals(1, calls)
+
+        controller.retry()
+        runCurrent()
+        assertEquals(2, (controller.state.value as OperationState.Running).attempt)
+        assertEquals(1, calls)
+
+        advanceTimeBy(3.seconds)
+        runCurrent()
+        assertEquals(2, calls)
+        assertEquals("snapshot", (controller.state.value as OperationState.Succeeded).data)
+    }
+
+    @Test
+    fun `starting fresh cancels a pending post-retry cooldown`() = runTest {
+        var calls = 0
+        val spec = OperationProfiles.foreground(
+            OperationName("profile_read"),
+            FixedBackoff(3.seconds),
+        ).copy(maxAttempts = 3)
+        val controller = controller(backgroundScope, spec) { input ->
+            calls++
+            if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
+            input
+        }
+
+        controller.start("first")
+        runCurrent()
+        controller.retry()
+        runCurrent()
+        assertEquals(2, (controller.state.value as OperationState.Running).attempt)
+        assertEquals(1, calls)
+
+        controller.start("second")
+        runCurrent()
+
+        assertEquals("second", (controller.state.value as OperationState.Succeeded).data)
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun `manual retry after exhausted offline failure has no pending cooldown`() = runTest {
+        var calls = 0
+        val spec = OperationProfiles.foreground(
+            OperationName("profile_read"),
+            FixedBackoff(3.seconds),
+        ).copy(maxAttempts = 2)
+        val controller = controller(backgroundScope, spec) { input ->
+            calls++
+            if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
+            if (calls == 2) throw RequestFailureException(RequestFailure.Offline)
+            input
+        }
+
+        controller.start("snapshot")
+        runCurrent()
+        controller.retry()
+        advanceTimeBy(3.seconds)
+        runCurrent()
+
+        val failed = controller.state.value as OperationState.Failed
+        assertEquals(RecoveryAction.Retry, failed.recovery)
+        assertEquals(2, failed.attemptsUsed)
+
+        controller.retry()
+        runCurrent()
+
+        assertEquals("snapshot", (controller.state.value as OperationState.Succeeded).data)
+        assertEquals(3, calls)
     }
 
     private fun controller(

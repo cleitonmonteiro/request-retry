@@ -41,14 +41,15 @@ Composable → ViewModel → OperationController → RetryExecutor → use case/
 ```
 
 `RetryExecutor` is the only request-retry owner. It applies typed failure classification,
-fail-closed decisions, full-jitter cooldown, capped `Retry-After`, cancellation propagation, and
-sanitized retry telemetry. It never makes a second HTTP call automatically: after cooldown, the
-user must explicitly retry. Ktor request retry is not
+fail-closed decisions, full-jitter cooldown, cancellation propagation, and
+sanitized retry telemetry. It never makes a second HTTP call automatically: a retryable failure
+returns control to the user immediately, and the cooldown is spent at the start of the next
+manual attempt the user explicitly triggers. Ktor request retry is not
 installed and OkHttp connection retry is disabled.
 
 `OperationController` owns one `StateFlow<OperationState<T>>`, serializes `start` and `retry`
 through a mailbox, captures immutable session input, and rejects stale results with a session
-token. It models running, cooldown, success, and failure explicitly.
+token. It models running, success, and failure explicitly.
 
 `OperationSpec` has only operation identity/name, attempts, and backoff. The controller always
 cancels a previous execution when a new start arrives. Do not reintroduce queue, join, reject,

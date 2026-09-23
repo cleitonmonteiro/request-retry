@@ -36,7 +36,6 @@ fun interface OneShotCall<in I, out O> {
 /** UI-safe actions offered after a terminal or uncertain operation outcome. */
 sealed interface RecoveryAction {
     data object Retry : RecoveryAction
-    data object ContactSupport : RecoveryAction
     data object Leave : RecoveryAction
 }
 
@@ -48,13 +47,6 @@ sealed interface PublicFailure {
     data object Unknown : PublicFailure
 }
 
-/** Sanitized reason for a cooldown before a manual retry becomes available. */
-sealed interface RetryReason {
-    data object TransientTransport : RetryReason
-    data object ServerUnavailable : RetryReason
-    data object RateLimited : RetryReason
-}
-
 /** Complete public lifecycle for one one-shot operation. */
 sealed interface OperationState<out T> {
     data object Idle : OperationState<Nothing>
@@ -64,14 +56,6 @@ sealed interface OperationState<out T> {
         val attempt: Int,
         val maxAttempts: Int,
         val startedAt: Instant,
-    ) : OperationState<Nothing>
-
-    /** A retryable failure is observing its cooldown before manual retry is offered. */
-    data class BackingOff(
-        val nextAttempt: Int,
-        val maxAttempts: Int,
-        val retryAt: Instant,
-        val reason: RetryReason,
     ) : OperationState<Nothing>
 
     /** A call completed successfully with its immutable result. */
@@ -88,15 +72,8 @@ sealed interface OperationState<out T> {
     ) : OperationState<Nothing>
 }
 
-/** Internal events emitted by the executor while a call is in progress. */
-internal sealed interface ExecutionProgress {
-    data class AttemptStarted(val attempt: Int) : ExecutionProgress
-    data class RetryScheduled(
-        val nextAttempt: Int,
-        val delay: Duration,
-        val reason: RetryReason,
-    ) : ExecutionProgress
-}
+/** Cooldown decided after a failed attempt, spent before the next manual attempt's call fires. */
+internal data class PendingRetry(val delay: Duration)
 
 /** Internal terminal result returned by the executor to the controller. */
 internal sealed interface ExecutionOutcome<out T> {
@@ -104,6 +81,7 @@ internal sealed interface ExecutionOutcome<out T> {
     data class ManualRetry(
         val failure: PublicFailure,
         val attemptsUsed: Int,
+        val pendingRetry: PendingRetry,
     ) : ExecutionOutcome<Nothing>
     data class Failure(
         val failure: PublicFailure,

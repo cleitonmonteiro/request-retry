@@ -18,31 +18,52 @@ import org.junit.Test
 
 class RetryExecutorTest {
     @Test
-    fun `transient failure waits then makes manual retry available without another call`() = runTest {
+    fun `transient failure returns manual retry immediately with a pending cooldown`() = runTest {
         var calls = 0
-        val progress = mutableListOf<ExecutionProgress>()
+        val outcome = RetryExecutor().execute(
+            input = Unit,
+            spec = readSpec(backoff = FixedBackoff(2.seconds)),
+            attempt = 1,
+            call = OneShotCall<Unit, String> { _, _ ->
+                calls++
+                throw RequestFailureException(RequestFailure.Connection)
+            },
+            onAttemptStarted = {},
+        )
+
+        assertEquals(
+            ExecutionOutcome.ManualRetry(
+                PublicFailure.TemporarilyUnavailable,
+                1,
+                PendingRetry(2.seconds),
+            ),
+            outcome,
+        )
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `supplied pending retry delays the call itself`() = runTest {
+        var calls = 0
         val result = async {
             RetryExecutor().execute(
                 input = Unit,
-                spec = readSpec(backoff = FixedBackoff(2.seconds)),
-                attempt = 1,
+                spec = readSpec(),
+                attempt = 2,
+                pendingRetry = PendingRetry(3.seconds),
                 call = OneShotCall<Unit, String> { _, _ ->
                     calls++
-                    throw RequestFailureException(RequestFailure.Connection)
+                    "ok"
                 },
-                onProgress = progress::add,
+                onAttemptStarted = {},
             )
         }
 
         runCurrent()
-        assertEquals(1, calls)
-        assertTrue(progress.last() is ExecutionProgress.RetryScheduled)
-        advanceTimeBy(2.seconds)
+        assertEquals(0, calls)
+        advanceTimeBy(3.seconds)
 
-        assertEquals(
-            ExecutionOutcome.ManualRetry(PublicFailure.TemporarilyUnavailable, 1),
-            result.await(),
-        )
+        assertEquals(ExecutionOutcome.Success("ok", 2), result.await())
         assertEquals(1, calls)
     }
 
@@ -55,7 +76,7 @@ class RetryExecutorTest {
             call = OneShotCall<Unit, String> { _, _ ->
                 throw RequestFailureException(RequestFailure.Http(403))
             },
-            onProgress = {},
+            onAttemptStarted = {},
         )
 
         assertEquals(
@@ -65,21 +86,69 @@ class RetryExecutorTest {
     }
 
     @Test
-    fun `cancellation during cooldown is transparent`() = runTest {
+    fun `cancellation during pending retry cooldown is transparent`() = runTest {
+        var calls = 0
         val job = async {
             RetryExecutor().execute(
                 input = Unit,
-                spec = readSpec(backoff = FixedBackoff(5.seconds)),
-                attempt = 1,
-                call = OneShotCall<Unit, String> { _, _ ->
-                    throw RequestFailureException(RequestFailure.Connection)
-                },
-                onProgress = {},
+                spec = readSpec(),
+                attempt = 2,
+                pendingRetry = PendingRetry(5.seconds),
+                call = OneShotCall<Unit, String> { _, _ -> calls++; "ok" },
+                onAttemptStarted = {},
             )
         }
         runCurrent()
         job.cancelAndJoin()
         assertTrue(job.getCompletionExceptionOrNull() is CancellationException)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `backoff receives zero-based retry index`() = runTest {
+        val indexes = mutableListOf<Int>()
+        val backoff = object : BackoffStrategy {
+            override val maxDelay = 8.seconds
+            override fun delayForRetry(retryIndex: Int): Duration {
+                indexes += retryIndex
+                return Duration.ZERO
+            }
+        }
+
+        RetryExecutor().execute(
+            input = Unit,
+            spec = readSpec(backoff = backoff),
+            attempt = 2,
+            call = OneShotCall<Unit, String> { _, _ ->
+                throw RequestFailureException(RequestFailure.Connection)
+            },
+            onAttemptStarted = {},
+        )
+
+        assertEquals(listOf(1), indexes)
+    }
+
+    @Test
+    fun `out of range strategy delay is clamped to its bounds`() = runTest {
+        val backoff = object : BackoffStrategy {
+            override val maxDelay = 8.seconds
+            override fun delayForRetry(retryIndex: Int): Duration = (-3).seconds
+        }
+
+        val outcome = RetryExecutor().execute(
+            input = Unit,
+            spec = readSpec(backoff = backoff),
+            attempt = 1,
+            call = OneShotCall<Unit, String> { _, _ ->
+                throw RequestFailureException(RequestFailure.Connection)
+            },
+            onAttemptStarted = {},
+        )
+
+        assertEquals(
+            Duration.ZERO,
+            (outcome as ExecutionOutcome.ManualRetry).pendingRetry.delay,
+        )
     }
 
     private fun readSpec(

@@ -57,7 +57,8 @@ private fun CreateOrderScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        val showingFeedback = state.result is OperationState.Failed
+        val showingFeedback = state.result is OperationState.Failed ||
+            (state.result is OperationState.Running && state.result.attempt > 1)
         if (!showingFeedback) OutlinedTextField(
             value = state.input.itemName,
             onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },

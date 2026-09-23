@@ -1,7 +1,5 @@
 package io.github.cleitonmonteiro.requestretry.domain.error
 
-import kotlin.time.Duration
-
 /** Stable failure vocabulary shared by data, resilience, and presentation layers. */
 sealed interface RequestFailure {
     data object Offline : RequestFailure
@@ -10,7 +8,6 @@ sealed interface RequestFailure {
     data class Http(
         val statusCode: Int,
         val backendCode: String? = null,
-        val retryAfter: Duration? = null,
         val requestId: String? = null,
     ) : RequestFailure
 

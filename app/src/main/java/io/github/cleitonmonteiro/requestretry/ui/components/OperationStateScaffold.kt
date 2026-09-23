@@ -46,14 +46,6 @@ fun <T> OperationStateScaffold(
                     )
                 }
             }
-            is OperationState.BackingOff -> {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.tertiary)
-                Text(
-                    text = stringResource(R.string.operation_backing_off, state.nextAttempt, state.maxAttempts),
-                    modifier = Modifier.padding(top = 16.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
             is OperationState.Succeeded -> success(state.data)
             is OperationState.Failed -> FailureContent(
                 failure = state.failure,
@@ -101,6 +93,5 @@ private fun PublicFailure.copyResources(): FailureCopy = when (this) {
 @StringRes
 private fun RecoveryAction.labelResource(): Int = when (this) {
     RecoveryAction.Retry -> R.string.action_try_again
-    RecoveryAction.ContactSupport -> R.string.action_contact_support
     RecoveryAction.Leave -> R.string.action_leave
 }

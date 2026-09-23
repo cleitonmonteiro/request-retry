@@ -46,7 +46,6 @@ class FailurePolicyTest {
         )
         val decision = ConservativeRetryDecider.decide(RetryContext(readSpec, classified, attempt = 1))
         assertTrue("classified HTTP 429 must retry", decision is RetryDecision.Retry)
-        assertEquals(RetryReason.RateLimited, (decision as RetryDecision.Retry).reason)
     }
 
     @Test

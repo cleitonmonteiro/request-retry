@@ -28,7 +28,7 @@ class SanitizedRetryObserver @Inject constructor(
 
     override fun onRetryScheduled(event: RetryScheduledEvent) = log(
         "retry_scheduled name=${event.operationName.value} next=${event.nextAttempt} " +
-            "delay_ms=${event.delay.inWholeMilliseconds} reason=${event.reason::class.simpleName}",
+            "delay_ms=${event.delay.inWholeMilliseconds}",
     )
 
     override fun onBackoffDelayStarted(context: BackoffDelayContext) = log(

@@ -6,7 +6,6 @@ import java.io.IOException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
-import kotlin.time.Duration
 
 /** Converts thrown transport errors into the app's stable [RequestFailure] vocabulary. */
 object DefaultFailureClassifier : FailureClassifier {
@@ -41,11 +40,7 @@ data class RetryContext(
 /** Internal result of applying the retry policy to one classified failure. */
 sealed interface RetryDecision {
     /** Permits a user-initiated next attempt after the requested cooldown. */
-    data class Retry(
-        val failure: PublicFailure,
-        val reason: RetryReason,
-        val serverDelay: Duration? = null,
-    ) : RetryDecision
+    data class Retry(val failure: PublicFailure) : RetryDecision
     /** Ends the operation with safe public feedback and a recovery action. */
     data class Stop(val failure: PublicFailure, val recovery: RecoveryAction) : RetryDecision
 }
@@ -72,7 +67,7 @@ object ConservativeRetryDecider : RetryDecider {
 
     private fun terminalDecision(failure: RequestFailure): RetryDecision.Stop? = when (failure) {
         RequestFailure.Generic -> RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave)
-        RequestFailure.Local -> RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport)
+        RequestFailure.Local -> RetryDecision.Stop(PublicFailure.Local, RecoveryAction.Leave)
         RequestFailure.Unknown -> RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave)
         is RequestFailure.Http -> if (failure.statusCode in 400..499 || failure.statusCode == 501) {
             if (failure.statusCode in setOf(408, 425, 429)) null
@@ -84,19 +79,9 @@ object ConservativeRetryDecider : RetryDecider {
     private fun retryableDecision(failure: RequestFailure): RetryDecision.Retry? = when (failure) {
         RequestFailure.Offline,
         RequestFailure.Connection,
-        -> RetryDecision.Retry(publicFailure(failure), RetryReason.TransientTransport)
+        -> RetryDecision.Retry(publicFailure(failure))
         is RequestFailure.Http -> when (failure.statusCode) {
-            408, 425 -> RetryDecision.Retry(
-                publicFailure(failure),
-                RetryReason.TransientTransport,
-                failure.retryAfter,
-            )
-            429 -> RetryDecision.Retry(publicFailure(failure), RetryReason.RateLimited, failure.retryAfter)
-            500, 502, 503, 504 -> RetryDecision.Retry(
-                publicFailure(failure),
-                RetryReason.ServerUnavailable,
-                failure.retryAfter,
-            )
+            408, 425, 429, 500, 502, 503, 504 -> RetryDecision.Retry(publicFailure(failure))
             else -> null
         }
         else -> null

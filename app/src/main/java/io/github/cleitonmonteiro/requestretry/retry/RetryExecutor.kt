@@ -16,7 +16,12 @@ private inline fun <T> runFailSafe(fallback: (Throwable) -> T, block: () -> T): 
     fallback(error)
 }
 
-/** Executes one HTTP call. A retryable failure waits through its cooldown, then returns control to the user. */
+/**
+ * Executes one HTTP call for one logical attempt. If [PendingRetry] carries a positive cooldown
+ * left over from the previous failure, the executor suspends for it before this attempt's call
+ * fires. A retryable failure returns control to the user immediately, carrying the cooldown to
+ * spend at the start of the next manual attempt.
+ */
 class RetryExecutor(
     private val failureClassifier: FailureClassifier = DefaultFailureClassifier,
     private val retryDecider: RetryDecider = ConservativeRetryDecider,
@@ -27,10 +32,15 @@ class RetryExecutor(
         spec: OperationSpec,
         attempt: Int,
         call: OneShotCall<I, O>,
-        onProgress: suspend (ExecutionProgress) -> Unit,
+        pendingRetry: PendingRetry? = null,
+        onAttemptStarted: suspend (Int) -> Unit,
     ): ExecutionOutcome<O> {
         observer.onOperationStarted(OperationTelemetryContext(spec.name, spec.maxAttempts))
-        onProgress(ExecutionProgress.AttemptStarted(attempt))
+        if (pendingRetry != null && pendingRetry.delay.isPositive()) {
+            observer.onBackoffDelayStarted(BackoffDelayContext(spec.name, pendingRetry.delay))
+            delay(pendingRetry.delay)
+        }
+        onAttemptStarted(attempt)
         observer.onAttemptStarted(AttemptTelemetryContext(spec.name, attempt))
         val context = AttemptContext(spec.name, attempt, spec.maxAttempts)
 
@@ -47,21 +57,15 @@ class RetryExecutor(
         return when (val decision = decideSafely(spec, result, attempt)) {
             is RetryDecision.Stop -> finishFailure(spec, decision.failure, decision.recovery, attempt)
             is RetryDecision.Retry -> {
-                val localDelay = runFailSafe(fallback = {
-                    return finishFailure(spec, PublicFailure.Local, RecoveryAction.ContactSupport, attempt)
+                val delayDuration = runFailSafe(fallback = {
+                    return finishFailure(spec, PublicFailure.Local, RecoveryAction.Leave, attempt)
                 }) { spec.backoff.delayForRetry(attempt - 1) }
-                val selected = maxOf(localDelay, decision.serverDelay ?: Duration.ZERO)
-                val delayDuration = minOf(selected, spec.backoff.maxDelay)
+                    .coerceIn(Duration.ZERO, spec.backoff.maxDelay)
                 observer.onRetryScheduled(
-                    RetryScheduledEvent(spec.name, attempt + 1, delayDuration, decision.reason),
+                    RetryScheduledEvent(spec.name, attempt + 1, delayDuration),
                 )
-                onProgress(ExecutionProgress.RetryScheduled(attempt + 1, delayDuration, decision.reason))
-                if (delayDuration.isPositive()) {
-                    observer.onBackoffDelayStarted(BackoffDelayContext(spec.name, delayDuration))
-                    delay(delayDuration)
-                }
                 observer.onOperationFinished(OperationTelemetryResult(spec.name, "manual_retry_available", attempt))
-                ExecutionOutcome.ManualRetry(decision.failure, attempt)
+                ExecutionOutcome.ManualRetry(decision.failure, attempt, PendingRetry(delayDuration))
             }
         }
     }
@@ -73,7 +77,7 @@ class RetryExecutor(
         spec: OperationSpec,
         failure: RequestFailure,
         attempt: Int,
-    ): RetryDecision = runFailSafe(fallback = { RetryDecision.Stop(PublicFailure.Local, RecoveryAction.ContactSupport) }) {
+    ): RetryDecision = runFailSafe(fallback = { RetryDecision.Stop(PublicFailure.Local, RecoveryAction.Leave) }) {
         retryDecider.decide(RetryContext(spec, failure, attempt))
     }
 
