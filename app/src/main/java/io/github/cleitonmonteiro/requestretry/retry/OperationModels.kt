@@ -1,7 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
-import java.time.Instant
 import kotlin.time.Duration
 
 /** Stable name used to select a retry profile and label sanitized telemetry. */
@@ -10,8 +9,8 @@ data class OperationName(val value: String)
 /** Immutable, validated execution policy for one logical operation. */
 data class OperationSpec(
     val name: OperationName,
-    val maxAttempts: Int,
-    val backoff: BackoffStrategy,
+    val maxAttempts: Int = 3,
+    val backoff: BackoffStrategy = FullJitterBackoff(),
 ) {
     init {
         require(maxAttempts >= 1) { "maxAttempts must be at least 1" }
@@ -55,7 +54,6 @@ sealed interface OperationState<out T> {
     data class Running(
         val attempt: Int,
         val maxAttempts: Int,
-        val startedAt: Instant,
     ) : OperationState<Nothing>
 
     /** A call completed successfully with its immutable result. */
@@ -72,16 +70,15 @@ sealed interface OperationState<out T> {
     ) : OperationState<Nothing>
 }
 
-/** Cooldown decided after a failed attempt, spent before the next manual attempt's call fires. */
-internal data class PendingRetry(val delay: Duration)
-
 /** Internal terminal result returned by the executor to the controller. */
 internal sealed interface ExecutionOutcome<out T> {
     data class Success<T>(val data: T, val attemptsUsed: Int) : ExecutionOutcome<T>
+
+    /** [pendingRetry] is the cooldown to spend before the next manual attempt's call fires. */
     data class ManualRetry(
         val failure: PublicFailure,
         val attemptsUsed: Int,
-        val pendingRetry: PendingRetry,
+        val pendingRetry: Duration,
     ) : ExecutionOutcome<Nothing>
     data class Failure(
         val failure: PublicFailure,

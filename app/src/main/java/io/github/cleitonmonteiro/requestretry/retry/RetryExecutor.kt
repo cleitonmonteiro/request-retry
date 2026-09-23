@@ -17,7 +17,7 @@ private inline fun <T> runFailSafe(fallback: (Throwable) -> T, block: () -> T): 
 }
 
 /**
- * Executes one HTTP call for one logical attempt. If [PendingRetry] carries a positive cooldown
+ * Executes one HTTP call for one logical attempt. If [pendingRetry] carries a positive cooldown
  * left over from the previous failure, the executor suspends for it before this attempt's call
  * fires. A retryable failure returns control to the user immediately, carrying the cooldown to
  * spend at the start of the next manual attempt.
@@ -32,15 +32,13 @@ class RetryExecutor(
         spec: OperationSpec,
         attempt: Int,
         call: OneShotCall<I, O>,
-        pendingRetry: PendingRetry? = null,
-        onAttemptStarted: suspend (Int) -> Unit,
+        pendingRetry: Duration? = null,
     ): ExecutionOutcome<O> {
         observer.onOperationStarted(OperationTelemetryContext(spec.name, spec.maxAttempts))
-        if (pendingRetry != null && pendingRetry.delay.isPositive()) {
-            observer.onBackoffDelayStarted(BackoffDelayContext(spec.name, pendingRetry.delay))
-            delay(pendingRetry.delay)
+        if (pendingRetry != null && pendingRetry.isPositive()) {
+            observer.onBackoffDelayStarted(BackoffDelayContext(spec.name, pendingRetry))
+            delay(pendingRetry)
         }
-        onAttemptStarted(attempt)
         observer.onAttemptStarted(AttemptTelemetryContext(spec.name, attempt))
         val context = AttemptContext(spec.name, attempt, spec.maxAttempts)
 
@@ -65,7 +63,7 @@ class RetryExecutor(
                     RetryScheduledEvent(spec.name, attempt + 1, delayDuration),
                 )
                 observer.onOperationFinished(OperationTelemetryResult(spec.name, "manual_retry_available", attempt))
-                ExecutionOutcome.ManualRetry(decision.failure, attempt, PendingRetry(delayDuration))
+                ExecutionOutcome.ManualRetry(decision.failure, attempt, delayDuration)
             }
         }
     }

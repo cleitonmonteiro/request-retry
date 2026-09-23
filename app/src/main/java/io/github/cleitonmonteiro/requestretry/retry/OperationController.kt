@@ -1,6 +1,6 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
-import java.time.Instant
+import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -14,16 +14,6 @@ fun interface OperationSpecFactory<in I> {
     fun create(input: I): OperationSpec
 }
 
-/** Provides wall-clock time so controller state remains testable. */
-fun interface WallClock {
-    fun now(): Instant
-}
-
-/** Production [WallClock] backed by the system clock. */
-object SystemWallClock : WallClock {
-    override fun now(): Instant = Instant.now()
-}
-
 /**
  * Serializes all public commands and execution events through one mailbox. The input stored in a
  * session is immutable, so retries and status verification can never observe later UI edits.
@@ -33,17 +23,17 @@ class OperationController<I, O>(
     private val specFactory: OperationSpecFactory<I>,
     private val executor: RetryExecutor,
     private val call: OneShotCall<I, O>,
-    private val wallClock: WallClock = SystemWallClock,
 ) {
     /** Immutable command snapshot that prevents retries from observing later form edits. */
     private class Session<I>(
         val token: Long,
         val input: I,
         val spec: OperationSpec,
-        val attempt: Int,
     ) {
         lateinit var job: Job
-        var pendingRetry: PendingRetry? = null
+
+        /** Cooldown decided by the failure that ended this session, spent by the next retry it authorizes. */
+        var pendingRetry: Duration? = null
     }
 
     private val _state = MutableStateFlow<OperationState<O>>(OperationState.Idle)
@@ -80,29 +70,14 @@ class OperationController<I, O>(
         begin(input, specFactory.create(input), attempt = 1)
     }
 
-    private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: PendingRetry? = null) {
-        val session = Session(++nextToken, input, spec, attempt)
+    private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: Duration? = null) {
+        val session = Session(++nextToken, input, spec)
         current = session
-        _state.value = OperationState.Running(
-            attempt = attempt,
-            maxAttempts = spec.maxAttempts,
-            startedAt = wallClock.now(),
-        )
+        _state.value = OperationState.Running(attempt = attempt, maxAttempts = spec.maxAttempts)
         session.job = scope.launch {
-            val outcome = executor.execute(input, spec, attempt, call, pendingRetry) { startedAttempt ->
-                mailbox.send { publishAttemptStarted(session.token, startedAttempt) }
-            }
+            val outcome = executor.execute(input, spec, attempt, call, pendingRetry)
             mailbox.send { publishOutcome(session.token, outcome) }
         }
-    }
-
-    private fun publishAttemptStarted(token: Long, attempt: Int) {
-        val session = current?.takeIf { it.token == token } ?: return
-        _state.value = OperationState.Running(
-            attempt = attempt,
-            maxAttempts = session.spec.maxAttempts,
-            startedAt = wallClock.now(),
-        )
     }
 
     private fun publishOutcome(token: Long, outcome: ExecutionOutcome<O>) {

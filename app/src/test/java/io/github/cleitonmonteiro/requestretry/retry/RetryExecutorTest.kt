@@ -28,15 +28,10 @@ class RetryExecutorTest {
                 calls++
                 throw RequestFailureException(RequestFailure.Connection)
             },
-            onAttemptStarted = {},
         )
 
         assertEquals(
-            ExecutionOutcome.ManualRetry(
-                PublicFailure.TemporarilyUnavailable,
-                1,
-                PendingRetry(2.seconds),
-            ),
+            ExecutionOutcome.ManualRetry(PublicFailure.TemporarilyUnavailable, 1, 2.seconds),
             outcome,
         )
         assertEquals(1, calls)
@@ -50,12 +45,11 @@ class RetryExecutorTest {
                 input = Unit,
                 spec = readSpec(),
                 attempt = 2,
-                pendingRetry = PendingRetry(3.seconds),
+                pendingRetry = 3.seconds,
                 call = OneShotCall<Unit, String> { _, _ ->
                     calls++
                     "ok"
                 },
-                onAttemptStarted = {},
             )
         }
 
@@ -76,7 +70,6 @@ class RetryExecutorTest {
             call = OneShotCall<Unit, String> { _, _ ->
                 throw RequestFailureException(RequestFailure.Http(403))
             },
-            onAttemptStarted = {},
         )
 
         assertEquals(
@@ -93,9 +86,8 @@ class RetryExecutorTest {
                 input = Unit,
                 spec = readSpec(),
                 attempt = 2,
-                pendingRetry = PendingRetry(5.seconds),
+                pendingRetry = 5.seconds,
                 call = OneShotCall<Unit, String> { _, _ -> calls++; "ok" },
-                onAttemptStarted = {},
             )
         }
         runCurrent()
@@ -122,7 +114,6 @@ class RetryExecutorTest {
             call = OneShotCall<Unit, String> { _, _ ->
                 throw RequestFailureException(RequestFailure.Connection)
             },
-            onAttemptStarted = {},
         )
 
         assertEquals(listOf(1), indexes)
@@ -142,19 +133,15 @@ class RetryExecutorTest {
             call = OneShotCall<Unit, String> { _, _ ->
                 throw RequestFailureException(RequestFailure.Connection)
             },
-            onAttemptStarted = {},
         )
 
         assertEquals(
             Duration.ZERO,
-            (outcome as ExecutionOutcome.ManualRetry).pendingRetry.delay,
+            (outcome as ExecutionOutcome.ManualRetry).pendingRetry,
         )
     }
 
     private fun readSpec(
         backoff: BackoffStrategy = FixedBackoff(Duration.ZERO),
-    ): OperationSpec = OperationProfiles.foreground(
-        OperationName("profile_read"),
-        backoff,
-    )
+    ): OperationSpec = OperationSpec(OperationName("profile_read"), backoff = backoff)
 }

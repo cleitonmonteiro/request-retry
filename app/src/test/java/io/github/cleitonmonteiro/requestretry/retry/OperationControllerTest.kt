@@ -24,10 +24,7 @@ class OperationControllerTest {
         var calls = 0
         val controller = controller(
             scope = backgroundScope,
-            spec = OperationProfiles.foreground(
-                OperationName("create_order"),
-                backoff = FixedBackoff(Duration.ZERO),
-            ),
+            spec = OperationSpec(OperationName("create_order"), backoff = FixedBackoff(Duration.ZERO)),
         ) { input ->
             calls++
             release.await()
@@ -52,10 +49,7 @@ class OperationControllerTest {
         val controller = OperationController(
             scope = backgroundScope,
             specFactory = OperationSpecFactory<Input> {
-                OperationProfiles.foreground(
-                    OperationName("profile_read"),
-                    FixedBackoff(Duration.ZERO),
-                ).copy(maxAttempts = 1)
+                OperationSpec(OperationName("profile_read"), maxAttempts = 1, backoff = FixedBackoff(Duration.ZERO))
             },
             executor = RetryExecutor(),
             call = OneShotCall { input, _ -> observed = input; input.value },
@@ -74,10 +68,7 @@ class OperationControllerTest {
         val firstRelease = CompletableDeferred<Unit>()
         val controller = controller(
             scope = backgroundScope,
-            spec = OperationProfiles.foreground(
-                OperationName("profile_read"),
-                backoff = FixedBackoff(Duration.ZERO),
-            ),
+            spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(Duration.ZERO)),
         ) { input ->
             if (input == "first") firstRelease.await()
             input
@@ -97,10 +88,7 @@ class OperationControllerTest {
     fun `concurrent manual retries spend only one new execution`() = runTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
-        val spec = OperationProfiles.foreground(
-            OperationName("profile_read"),
-            FixedBackoff(Duration.ZERO),
-        ).copy(maxAttempts = 3)
+        val spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(Duration.ZERO))
         val controller = controller(backgroundScope, spec) { input ->
             calls++
             if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
@@ -122,10 +110,7 @@ class OperationControllerTest {
 
     @Test
     fun `third transient failure ends the manual retry session`() = runTest {
-        val spec = OperationProfiles.foreground(
-            OperationName("profile_read"),
-            FixedBackoff(Duration.ZERO),
-        ).copy(maxAttempts = 3)
+        val spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(Duration.ZERO))
         val controller = controller(backgroundScope, spec) {
             throw RequestFailureException(RequestFailure.Http(500))
         }
@@ -145,10 +130,7 @@ class OperationControllerTest {
     @Test
     fun `retry waits out the cooldown before firing the next call`() = runTest {
         var calls = 0
-        val spec = OperationProfiles.foreground(
-            OperationName("profile_read"),
-            FixedBackoff(3.seconds),
-        ).copy(maxAttempts = 3)
+        val spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(3.seconds))
         val controller = controller(backgroundScope, spec) {
             calls++
             if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
@@ -174,10 +156,7 @@ class OperationControllerTest {
     @Test
     fun `starting fresh cancels a pending post-retry cooldown`() = runTest {
         var calls = 0
-        val spec = OperationProfiles.foreground(
-            OperationName("profile_read"),
-            FixedBackoff(3.seconds),
-        ).copy(maxAttempts = 3)
+        val spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(3.seconds))
         val controller = controller(backgroundScope, spec) { input ->
             calls++
             if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))
@@ -201,10 +180,7 @@ class OperationControllerTest {
     @Test
     fun `manual retry after exhausted offline failure has no pending cooldown`() = runTest {
         var calls = 0
-        val spec = OperationProfiles.foreground(
-            OperationName("profile_read"),
-            FixedBackoff(3.seconds),
-        ).copy(maxAttempts = 2)
+        val spec = OperationSpec(OperationName("profile_read"), maxAttempts = 2, backoff = FixedBackoff(3.seconds))
         val controller = controller(backgroundScope, spec) { input ->
             calls++
             if (calls == 1) throw RequestFailureException(RequestFailure.Http(500))

@@ -10,7 +10,7 @@ import io.github.cleitonmonteiro.requestretry.domain.model.IdempotencyKey
 import io.github.cleitonmonteiro.requestretry.domain.model.OperationId
 import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationName
-import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import javax.inject.Inject
@@ -75,7 +75,7 @@ class CreateOrderViewModel @Inject constructor(
     private val controller = operationControllers.create(
         scope = viewModelScope,
         specFactory = OperationSpecFactory<NewOrderRequest> {
-            OperationProfiles.foreground(name = OperationName("create_order"))
+            OperationSpec(name = OperationName("create_order"))
         },
     ) { request, _ -> createOrder(request).single() }
     private val _effects = Channel<CreateOrderEffect>(Channel.BUFFERED)

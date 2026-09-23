@@ -7,7 +7,7 @@ import io.github.cleitonmonteiro.requestretry.domain.model.UserProfile
 import io.github.cleitonmonteiro.requestretry.domain.usecase.GetProfileUseCase
 import io.github.cleitonmonteiro.requestretry.retry.OperationControllerFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationName
-import io.github.cleitonmonteiro.requestretry.retry.OperationProfiles
+import io.github.cleitonmonteiro.requestretry.retry.OperationSpec
 import io.github.cleitonmonteiro.requestretry.retry.OperationSpecFactory
 import io.github.cleitonmonteiro.requestretry.retry.OperationState
 import javax.inject.Inject
@@ -37,7 +37,7 @@ class ProfileViewModel @Inject constructor(
     private val controller = operationControllers.create(
         scope = viewModelScope,
         specFactory = OperationSpecFactory<Unit> {
-            OperationProfiles.foreground(OperationName("profile_read"))
+            OperationSpec(OperationName("profile_read"))
         },
     ) { _, _ -> getProfile().single() }
     private val _effects = Channel<ProfileEffect>(Channel.BUFFERED)

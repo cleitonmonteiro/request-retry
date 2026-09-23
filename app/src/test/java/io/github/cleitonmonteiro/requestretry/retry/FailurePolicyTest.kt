@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FailurePolicyTest {
-    private val readSpec = OperationProfiles.foreground(
+    private val readSpec = OperationSpec(
         OperationName("profile_read"),
-        FixedBackoff(1.seconds),
+        backoff = FixedBackoff(1.seconds),
     )
 
     @Test
