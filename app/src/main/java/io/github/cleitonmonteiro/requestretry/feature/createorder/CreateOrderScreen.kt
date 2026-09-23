@@ -50,6 +50,14 @@ fun CreateOrderRoute(
     )
 }
 
+/** Once a retry or a terminal outcome starts, the form gives way to [OperationStateScaffold]. */
+private val CreateOrderUiState.showsForm: Boolean
+    get() = when (val result = result) {
+        OperationState.Idle -> true
+        is OperationState.Running -> result.attempt == 1
+        is OperationState.Succeeded, is OperationState.Failed -> false
+    }
+
 @Composable
 private fun CreateOrderScreen(
     state: CreateOrderUiState,
@@ -57,46 +65,8 @@ private fun CreateOrderScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        val showingFeedback = state.result is OperationState.Failed ||
-            (state.result is OperationState.Running && state.result.attempt > 1)
-        if (!showingFeedback) OutlinedTextField(
-            value = state.input.itemName,
-            onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },
-            label = { Text("Item name") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
-        if (!showingFeedback) OutlinedTextField(
-            value = state.input.quantity,
-            onValueChange = { onIntent(CreateOrderIntent.ChangeQuantity(it)) },
-            label = { Text("Quantity") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-        if (!showingFeedback) OutlinedTextField(
-            value = state.input.customerName,
-            onValueChange = { onIntent(CreateOrderIntent.ChangeCustomerName(it)) },
-            label = { Text("Customer name") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
-        val validationError = state.validationError
-        if (!showingFeedback && validationError != null) {
-            Text(
-                text = stringResource(
-                    when (validationError) {
-                        OrderValidationError.ITEM_REQUIRED -> R.string.validation_item_required
-                        OrderValidationError.QUANTITY_MUST_BE_POSITIVE -> R.string.validation_quantity_positive
-                    },
-                ),
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (!showingFeedback) {
-            Button(
-                onClick = { onIntent(CreateOrderIntent.Submit) },
-                modifier = Modifier.padding(16.dp),
-            ) {
-                Text("Create order")
-            }
+        if (state.showsForm) {
+            OrderForm(input = state.input, validationError = state.validationError, onIntent = onIntent)
         }
         if (state.result != OperationState.Idle) {
             OperationStateScaffold(
@@ -112,6 +82,50 @@ private fun CreateOrderScreen(
                 modifier = Modifier.weight(1f),
             ) { order -> CreatedOrder(order) }
         }
+    }
+}
+
+@Composable
+private fun OrderForm(
+    input: OrderFormInput,
+    validationError: OrderValidationError?,
+    onIntent: (CreateOrderIntent) -> Unit,
+) {
+    OutlinedTextField(
+        value = input.itemName,
+        onValueChange = { onIntent(CreateOrderIntent.ChangeItemName(it)) },
+        label = { Text("Item name") },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    OutlinedTextField(
+        value = input.quantity,
+        onValueChange = { onIntent(CreateOrderIntent.ChangeQuantity(it)) },
+        label = { Text("Quantity") },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    OutlinedTextField(
+        value = input.customerName,
+        onValueChange = { onIntent(CreateOrderIntent.ChangeCustomerName(it)) },
+        label = { Text("Customer name") },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    if (validationError != null) {
+        Text(
+            text = stringResource(
+                when (validationError) {
+                    OrderValidationError.ITEM_REQUIRED -> R.string.validation_item_required
+                    OrderValidationError.QUANTITY_MUST_BE_POSITIVE -> R.string.validation_quantity_positive
+                },
+            ),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
+    Button(
+        onClick = { onIntent(CreateOrderIntent.Submit) },
+        modifier = Modifier.padding(16.dp),
+    ) {
+        Text("Create order")
     }
 }
 
