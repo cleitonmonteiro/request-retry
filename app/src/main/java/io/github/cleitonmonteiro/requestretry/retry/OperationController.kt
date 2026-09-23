@@ -1,5 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
+import io.github.cleitonmonteiro.requestretry.data.observability.DebugLogger
+import io.github.cleitonmonteiro.requestretry.data.observability.NoOpDebugLogger
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,6 +25,7 @@ class OperationController<I, O>(
     private val specFactory: OperationSpecFactory<I>,
     private val executor: RetryExecutor,
     private val call: OneShotCall<I, O>,
+    private val logger: DebugLogger = NoOpDebugLogger,
 ) {
     /** Immutable command snapshot that prevents retries from observing later form edits. */
     private class Session<I>(
@@ -39,6 +42,7 @@ class OperationController<I, O>(
     private val _state = MutableStateFlow<OperationState<O>>(OperationState.Idle)
     val state: StateFlow<OperationState<O>> = _state.asStateFlow()
 
+    /** Generous headroom over any realistic burst of manual taps; a full mailbox signals a caller bug. */
     private val mailbox = Channel<suspend () -> Unit>(capacity = 64)
     private var nextToken = 0L
     private var current: Session<I>? = null
@@ -49,25 +53,29 @@ class OperationController<I, O>(
         }
     }
 
+    /** Cancels any execution in flight and starts a fresh session from this input snapshot. */
     fun start(input: I) {
-        check(mailbox.trySend { handleStart(input) }.isSuccess) { "Operation mailbox is full" }
+        enqueue {
+            current?.job?.takeIf { it.isActive }?.cancel()
+            begin(input, specFactory.create(input), attempt = 1)
+        }
     }
 
+    /** No-ops unless the current session is terminally [OperationState.Failed] with [RecoveryAction.Retry]. */
     fun retry() {
-        check(
-            mailbox.trySend {
-                if (current?.job?.isActive == true) return@trySend
-                val failed = _state.value as? OperationState.Failed ?: return@trySend
-                if (failed.recovery != RecoveryAction.Retry) return@trySend
-                val session = current ?: return@trySend
-                begin(session.input, session.spec, failed.attemptsUsed + 1, session.pendingRetry)
-            }.isSuccess,
-        ) { "Operation mailbox is full" }
+        enqueue {
+            if (current?.job?.isActive == true) return@enqueue
+            val failed = _state.value as? OperationState.Failed ?: return@enqueue
+            if (failed.recovery != RecoveryAction.Retry) return@enqueue
+            val session = current ?: return@enqueue
+            begin(session.input, session.spec, failed.attemptsUsed + 1, session.pendingRetry)
+        }
     }
 
-    private fun handleStart(input: I) {
-        current?.job?.takeIf { it.isActive }?.cancel()
-        begin(input, specFactory.create(input), attempt = 1)
+    private fun enqueue(command: suspend () -> Unit) {
+        if (mailbox.trySend(command).isFailure) {
+            logger.d("OperationController", "mailbox full, dropping command")
+        }
     }
 
     private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: Duration? = null) {

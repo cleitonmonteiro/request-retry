@@ -1,5 +1,7 @@
 package io.github.cleitonmonteiro.requestretry.retry
 
+import io.github.cleitonmonteiro.requestretry.data.observability.DebugLogger
+import io.github.cleitonmonteiro.requestretry.data.observability.NoOpDebugLogger
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 
@@ -8,6 +10,7 @@ class OperationControllerFactory @Inject constructor(
     private val failureClassifier: FailureClassifier,
     private val retryDecider: RetryDecider,
     private val observer: RetryObserver,
+    private val logger: DebugLogger,
 ) {
     constructor(
         failureClassifier: FailureClassifier = DefaultFailureClassifier,
@@ -16,6 +19,7 @@ class OperationControllerFactory @Inject constructor(
         failureClassifier,
         retryDecider,
         NoOpRetryObserver,
+        NoOpDebugLogger,
     )
 
     fun <I, O> create(
@@ -31,5 +35,6 @@ class OperationControllerFactory @Inject constructor(
             observer = observer,
         ),
         call = call,
+        logger = logger,
     )
 }

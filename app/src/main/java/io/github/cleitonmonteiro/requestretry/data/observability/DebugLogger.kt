@@ -15,3 +15,8 @@ class AndroidDebugLogger @Inject constructor() : DebugLogger {
         if (BuildConfig.DEBUG) Log.d(tag, message)
     }
 }
+
+/** Default for callers that do not need logging, e.g. plain JVM tests. */
+object NoOpDebugLogger : DebugLogger {
+    override fun d(tag: String, message: String) = Unit
+}
