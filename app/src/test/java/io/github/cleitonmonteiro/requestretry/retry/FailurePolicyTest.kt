@@ -2,6 +2,7 @@ package io.github.cleitonmonteiro.requestretry.retry
 
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -57,6 +58,13 @@ class FailurePolicyTest {
             RetryDecision.Stop(PublicFailure.Unknown, RecoveryAction.Leave),
             decision,
         )
+    }
+
+    @Test
+    fun `cancellation reaching the classifier fails closed`() {
+        val classified = DefaultFailureClassifier.classify(CancellationException("timed out"))
+
+        assertEquals(RequestFailure.Unknown, classified)
     }
 
     @Test

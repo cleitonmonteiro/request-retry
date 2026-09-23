@@ -9,10 +9,12 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -203,6 +205,23 @@ class OperationControllerTest {
 
         assertEquals("snapshot", (controller.state.value as OperationState.Succeeded).data)
         assertEquals(3, calls)
+    }
+
+    @Test
+    fun `cancellation thrown by the call fails the session instead of leaving it running`() = runTest {
+        val spec = OperationSpec(OperationName("profile_read"), backoff = FixedBackoff(Duration.ZERO))
+        val controller = controller(backgroundScope, spec) {
+            withTimeout(1.seconds) { awaitCancellation() }
+        }
+
+        controller.start("snapshot")
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        assertEquals(
+            OperationState.Failed(PublicFailure.Unknown, RecoveryAction.Leave, attemptsUsed = 1),
+            controller.state.value,
+        )
     }
 
     private fun controller(

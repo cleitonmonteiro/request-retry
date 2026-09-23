@@ -9,19 +9,18 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * Converts thrown errors into the app's stable [RequestFailure] vocabulary, collapsing HTTP 400,
- * 401, 403, 409, and 422 into [RequestFailure.Generic]. Cancellation is rethrown, never classified.
+ * 401, 403, 409, and 422 into [RequestFailure.Generic]. The executor never passes the cancellation
+ * of its own coroutine here, so a [CancellationException] that does arrive, such as a `withTimeout`
+ * inside the call, fails closed as [RequestFailure.Unknown].
  */
 object DefaultFailureClassifier : FailureClassifier {
-    override fun classify(error: Throwable): RequestFailure {
-        if (error is CancellationException) throw error
-        return when (error) {
-            is RequestFailureException -> normalize(error.failure)
-            is UnknownHostException -> RequestFailure.Connection
-            is SSLException -> RequestFailure.Generic
-            is IllegalArgumentException -> RequestFailure.Local
-            is IOException -> RequestFailure.Connection
-            else -> RequestFailure.Unknown
-        }
+    override fun classify(error: Throwable): RequestFailure = when (error) {
+        is RequestFailureException -> normalize(error.failure)
+        is UnknownHostException -> RequestFailure.Connection
+        is SSLException -> RequestFailure.Generic
+        is IllegalArgumentException -> RequestFailure.Local
+        is IOException -> RequestFailure.Connection
+        else -> RequestFailure.Unknown
     }
 
     private fun normalize(failure: RequestFailure): RequestFailure = when (failure) {

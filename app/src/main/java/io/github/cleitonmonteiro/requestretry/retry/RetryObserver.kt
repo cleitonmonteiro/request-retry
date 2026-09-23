@@ -3,7 +3,10 @@ package io.github.cleitonmonteiro.requestretry.retry
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import kotlin.time.Duration
 
-/** Receives controlled, payload-free telemetry about operation execution. */
+/**
+ * Receives controlled, payload-free telemetry about operation execution. Callbacks are best-effort:
+ * the executor ignores a non-fatal exception thrown here, so telemetry never changes an outcome.
+ */
 interface RetryObserver {
     fun onOperationStarted(context: OperationTelemetryContext) = Unit
     fun onAttemptStarted(context: AttemptTelemetryContext) = Unit
