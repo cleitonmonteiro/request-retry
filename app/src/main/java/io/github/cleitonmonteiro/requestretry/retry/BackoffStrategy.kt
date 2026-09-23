@@ -6,13 +6,19 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** Computes the bounded cooldown to show before a manual retry can be performed. */
+/** Computes the bounded cooldown spent at the start of the next manual attempt. */
 interface BackoffStrategy {
+    /** Upper bound for any cooldown; the executor clamps every result to it. */
     val maxDelay: Duration
+
+    /** Cooldown for the zero-based [retryIndex]: 0 is the wait before the second attempt. */
     fun delayForRetry(retryIndex: Int): Duration
 }
 
-/** Full-jitter exponential backoff: a uniform delay between zero and the capped delay. */
+/**
+ * Full-jitter exponential backoff: a uniform delay in
+ * `[0, min(maxDelay, baseDelay * factor^retryIndex)]`.
+ */
 class FullJitterBackoff(
     private val baseDelay: Duration = 1.seconds,
     private val factor: Double = 2.0,
@@ -42,7 +48,7 @@ class FullJitterBackoff(
     }
 }
 
-/** Backoff implementation that always returns the configured delay, primarily for deterministic tests. */
+/** Always returns [maxDelay]; for tests that need a deterministic cooldown. */
 class FixedBackoff(override val maxDelay: Duration) : BackoffStrategy {
     init {
         require(maxDelay.isFinite() && !maxDelay.isNegative())

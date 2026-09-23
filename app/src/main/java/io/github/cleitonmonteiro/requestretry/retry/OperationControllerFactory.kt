@@ -10,6 +10,7 @@ class OperationControllerFactory @Inject constructor(
     private val executor: RetryExecutor,
     private val logger: DebugLogger,
 ) {
+    /** Builds its own executor without telemetry or logging, for tests that skip the Hilt graph. */
     constructor(
         failureClassifier: FailureClassifier = DefaultFailureClassifier,
         retryDecider: RetryDecider = ConservativeRetryDecider,
@@ -18,6 +19,7 @@ class OperationControllerFactory @Inject constructor(
         NoOpDebugLogger,
     )
 
+    /** Returns an independent controller whose mailbox and executions run in [scope]. */
     fun <I, O> create(
         scope: CoroutineScope,
         specFactory: OperationSpecFactory<I>,

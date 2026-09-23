@@ -1,6 +1,9 @@
 package io.github.cleitonmonteiro.requestretry.domain.error
 
-/** Stable failure vocabulary shared by data, resilience, and presentation layers. */
+/**
+ * Stable failure vocabulary shared by the data and resilience layers. Presentation never sees it
+ * directly, only the sanitized public failure the retry policy maps it to.
+ */
 sealed interface RequestFailure {
     data object Offline : RequestFailure
     data object Connection : RequestFailure
@@ -11,7 +14,10 @@ sealed interface RequestFailure {
         val requestId: String? = null,
     ) : RequestFailure
 
-    /** Terminal failure whose exact cause (timeout, auth, permission, validation, conflict, rate limit, protocol) is not distinguished. */
+    /**
+     * Terminal failure whose exact cause (timeout, TLS, auth, permission, validation, conflict,
+     * protocol) is not distinguished.
+     */
     data object Generic : RequestFailure
     data object Local : RequestFailure
     data object Unknown : RequestFailure

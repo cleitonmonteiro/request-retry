@@ -5,7 +5,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration
 
-/** Runs [block], never swallowing cancellation or a fatal [Error]; any other throwable is mapped by [fallback]. */
+/**
+ * Runs [block], never swallowing cancellation or a fatal [Error]; any other throwable is mapped by
+ * [fallback].
+ */
 private inline fun <T> runFailSafe(fallback: (Throwable) -> T, block: () -> T): T = try {
     block()
 } catch (cancellation: CancellationException) {
@@ -17,16 +20,20 @@ private inline fun <T> runFailSafe(fallback: (Throwable) -> T, block: () -> T): 
 }
 
 /**
- * Executes one HTTP call for one logical attempt. If [pendingRetry] carries a positive cooldown
- * left over from the previous failure, the executor suspends for it before this attempt's call
- * fires. A retryable failure returns control to the user immediately, carrying the cooldown to
- * spend at the start of the next manual attempt.
+ * Runs exactly one call per logical attempt and never makes a second one on its own. A retryable
+ * failure returns [ExecutionOutcome.ManualRetry] immediately, carrying the cooldown to spend at the
+ * start of the next manual attempt the user triggers.
  */
 class RetryExecutor(
     private val failureClassifier: FailureClassifier = DefaultFailureClassifier,
     private val retryDecider: RetryDecider = ConservativeRetryDecider,
     private val observer: RetryObserver = NoOpRetryObserver,
 ) {
+    /**
+     * Spends [pendingRetry] first when it is positive, then runs [call] once as [attempt].
+     * Cancellation and fatal errors propagate; failures from the call, classifier, decider, or
+     * backoff end in a fail-closed outcome.
+     */
     internal suspend fun <I, O> execute(
         input: I,
         spec: OperationSpec,

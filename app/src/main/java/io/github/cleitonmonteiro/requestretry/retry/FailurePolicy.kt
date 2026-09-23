@@ -7,7 +7,10 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
 
-/** Converts thrown transport errors into the app's stable [RequestFailure] vocabulary. */
+/**
+ * Converts thrown errors into the app's stable [RequestFailure] vocabulary, collapsing HTTP 400,
+ * 401, 403, 409, and 422 into [RequestFailure.Generic]. Cancellation is rethrown, never classified.
+ */
 object DefaultFailureClassifier : FailureClassifier {
     override fun classify(error: Throwable): RequestFailure {
         if (error is CancellationException) throw error
@@ -30,17 +33,18 @@ object DefaultFailureClassifier : FailureClassifier {
     }
 }
 
-/** Inputs used to decide whether an unsuccessful logical attempt can be retried. */
+/** Inputs for deciding whether a failed attempt can be retried; [attempt] is 1-based. */
 data class RetryContext(
     val spec: OperationSpec,
     val failure: RequestFailure,
     val attempt: Int,
 )
 
-/** Internal result of applying the retry policy to one classified failure. */
+/** Result of applying the retry policy to one classified failure. */
 sealed interface RetryDecision {
-    /** Permits a user-initiated next attempt after the requested cooldown. */
+    /** Offers a manual next attempt; the executor derives its cooldown from the spec's backoff. */
     data class Retry(val failure: PublicFailure) : RetryDecision
+
     /** Ends the operation with safe public feedback and a recovery action. */
     data class Stop(val failure: PublicFailure, val recovery: RecoveryAction) : RetryDecision
 }
@@ -50,7 +54,11 @@ fun interface RetryDecider {
     fun decide(context: RetryContext): RetryDecision
 }
 
-/** Fail-closed policy that allows retries only for explicitly transient failures. */
+/**
+ * Fail-closed policy that allows retries only for explicitly transient failures, within
+ * [OperationSpec.maxAttempts]. Once attempts are exhausted, only Offline still offers
+ * [RecoveryAction.Retry].
+ */
 object ConservativeRetryDecider : RetryDecider {
     override fun decide(context: RetryContext): RetryDecision {
         val spec = context.spec

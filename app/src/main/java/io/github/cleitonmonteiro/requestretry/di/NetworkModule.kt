@@ -28,6 +28,7 @@ object NetworkModule {
     fun provideHttpClient(debugLogger: DebugLogger): HttpClient = HttpClient(OkHttp) {
         expectSuccess = true
         engine {
+            // RetryExecutor is the only retry owner; OkHttp must never replay a request by itself.
             config { retryOnConnectionFailure(false) }
         }
         defaultRequest {

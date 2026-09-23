@@ -17,8 +17,9 @@ fun interface OperationSpecFactory<in I> {
 }
 
 /**
- * Serializes all public commands and execution events through one mailbox. The input stored in a
- * session is immutable, so retries and status verification can never observe later UI edits.
+ * Serializes [start], [retry], and execution outcomes through one mailbox, so the controller's
+ * mutable fields are only touched by one command at a time. Each session keeps an immutable input
+ * snapshot, so retries never observe later UI edits.
  */
 class OperationController<I, O>(
     private val scope: CoroutineScope,
@@ -27,19 +28,27 @@ class OperationController<I, O>(
     private val call: OneShotCall<I, O>,
     private val logger: DebugLogger = NoOpDebugLogger,
 ) {
-    /** Immutable command snapshot that prevents retries from observing later form edits. */
+    /**
+     * One execution, identified by its instance: stale outcomes are rejected by reference, so this
+     * must stay a plain class rather than a data class, whose equality would match a retry of the
+     * same input. [input] and [spec] are the immutable snapshot every retry resends.
+     */
     private class Session<I>(
         val input: I,
         val spec: OperationSpec,
     ) {
-        /** Cooldown decided by the failure that ended this session, spent by the next retry it authorizes. */
+        /**
+         * Cooldown from the [ExecutionOutcome.ManualRetry] that ended this session, spent by the
+         * retry it authorizes. Written at most once, inside the mailbox; a fresh session starts
+         * without one.
+         */
         var pendingRetry: Duration? = null
     }
 
     private val _state = MutableStateFlow<OperationState<O>>(OperationState.Idle)
     val state: StateFlow<OperationState<O>> = _state.asStateFlow()
 
-    /** Generous headroom over any realistic burst of manual taps; a full mailbox signals a caller bug. */
+    /** Generous headroom over any realistic burst of taps; a full mailbox signals a caller bug. */
     private val mailbox = Channel<suspend () -> Unit>(capacity = 64)
     private var currentSession: Session<I>? = null
     private var currentJob: Job? = null
@@ -58,7 +67,10 @@ class OperationController<I, O>(
         }
     }
 
-    /** No-ops unless the current session is terminally [OperationState.Failed] with [RecoveryAction.Retry]. */
+    /**
+     * Starts the next attempt from the current session's snapshot, spending its pending cooldown
+     * first. No-ops unless the state is [OperationState.Failed] with [RecoveryAction.Retry].
+     */
     fun retry() {
         enqueue {
             val failed = _state.value as? OperationState.Failed ?: return@enqueue
@@ -84,6 +96,7 @@ class OperationController<I, O>(
         }
     }
 
+    /** Drops the outcome if a later [start] or [retry] has already replaced [session]. */
     private fun publishOutcome(session: Session<I>, outcome: ExecutionOutcome<O>) {
         if (currentSession !== session) return
         _state.value = when (outcome) {

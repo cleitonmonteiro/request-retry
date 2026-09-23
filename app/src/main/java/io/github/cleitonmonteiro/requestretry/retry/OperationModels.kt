@@ -3,7 +3,7 @@ package io.github.cleitonmonteiro.requestretry.retry
 import io.github.cleitonmonteiro.requestretry.domain.error.RequestFailure
 import kotlin.time.Duration
 
-/** Stable name used to select a retry profile and label sanitized telemetry. */
+/** Stable name that labels sanitized telemetry for one kind of operation. */
 data class OperationName(val value: String)
 
 /** Immutable, validated execution policy for one logical operation. */
@@ -27,14 +27,20 @@ data class AttemptContext(
     val maxAttempts: Int,
 )
 
-/** A single suspending HTTP operation executed from an immutable input snapshot. */
+/**
+ * A single suspending HTTP operation executed from an immutable input snapshot. It runs once per
+ * attempt and must not retry on its own: [RetryExecutor] is the only retry owner.
+ */
 fun interface OneShotCall<in I, out O> {
     suspend fun execute(input: I, context: AttemptContext): O
 }
 
-/** UI-safe actions offered after a terminal or uncertain operation outcome. */
+/** What the UI may offer after an operation fails. */
 sealed interface RecoveryAction {
+    /** The user may trigger another manual attempt with the same input snapshot. */
     data object Retry : RecoveryAction
+
+    /** No retry is offered for this failure. */
     data object Leave : RecoveryAction
 }
 
@@ -50,7 +56,7 @@ sealed interface PublicFailure {
 sealed interface OperationState<out T> {
     data object Idle : OperationState<Nothing>
 
-    /** A call is currently executing with the shown logical attempt number. */
+    /** An attempt is in flight, including any cooldown spent before its call fires. */
     data class Running(
         val attempt: Int,
         val maxAttempts: Int,
@@ -80,6 +86,11 @@ internal sealed interface ExecutionOutcome<out T> {
         val attemptsUsed: Int,
         val pendingRetry: Duration,
     ) : ExecutionOutcome<Nothing>
+
+    /**
+     * Ends without a pending cooldown. [recovery] can still be [RecoveryAction.Retry] when an
+     * Offline failure exhausts its attempts.
+     */
     data class Failure(
         val failure: PublicFailure,
         val recovery: RecoveryAction,

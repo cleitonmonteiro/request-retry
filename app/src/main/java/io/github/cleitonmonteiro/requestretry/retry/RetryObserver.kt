@@ -13,19 +13,20 @@ interface RetryObserver {
     fun onOperationFinished(result: OperationTelemetryResult) = Unit
 }
 
-/** Payload-free metadata emitted when a logical operation starts. */
+/** Payload-free metadata emitted each time the executor starts, once per manual attempt. */
 data class OperationTelemetryContext(val operationName: OperationName, val maxAttempts: Int)
 
 /** Payload-free metadata emitted when a single HTTP attempt starts. */
 data class AttemptTelemetryContext(val operationName: OperationName, val attempt: Int)
 
-/** Sanitized outcome metadata for one HTTP attempt. */
+/** Sanitized outcome metadata for one HTTP attempt; [failureCategory] is null on success. */
 data class AttemptTelemetryResult(
     val operationName: OperationName,
     val attempt: Int,
     val succeeded: Boolean,
     val failureCategory: String?,
 )
+
 /**
  * Cooldown metadata computed when a retryable failure decides its next-attempt cooldown. The
  * cooldown itself is spent at the start of that next manual attempt, not before this event
@@ -43,7 +44,10 @@ data class RetryScheduledEvent(
  */
 data class BackoffDelayContext(val operationName: OperationName, val delay: Duration)
 
-/** Sanitized terminal outcome metadata for a logical operation. */
+/**
+ * Sanitized metadata emitted when one execution ends; [outcome] is `succeeded`,
+ * `manual_retry_available`, or `failed`.
+ */
 data class OperationTelemetryResult(
     val operationName: OperationName,
     val outcome: String,

@@ -5,7 +5,7 @@ data class NewOrderRequest(
     val itemName: String,
     val quantity: Int,
     val customerName: String,
-    /** Stable across retries and foreground status verification; a new intention gets a new identity. */
+    /** Stable across retries of this submission; a new intention gets a new identity. */
     val operationId: OperationId,
     val idempotencyKey: IdempotencyKey,
 )

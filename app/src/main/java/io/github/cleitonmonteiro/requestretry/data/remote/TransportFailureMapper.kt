@@ -13,6 +13,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+/**
+ * Maps a Ktor or transport throwable to a typed [RequestFailureException]. Timeouts become
+ * [RequestFailure.Generic], so the retry policy treats them as terminal.
+ */
 internal suspend fun Throwable.toRequestFailureException(): RequestFailureException {
     if (this is RequestFailureException) return this
     val failure = when (this) {
