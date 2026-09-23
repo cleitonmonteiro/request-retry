@@ -48,8 +48,8 @@ manual attempt the user explicitly triggers. Ktor request retry is not
 installed and OkHttp connection retry is disabled.
 
 `OperationController` owns one `StateFlow<OperationState<T>>`, serializes `start` and `retry`
-through a mailbox, captures immutable session input, and rejects stale results with a session
-token. It models running, success, and failure explicitly.
+through a mailbox, captures immutable session input, and rejects stale results by session
+identity. It models running, success, and failure explicitly.
 
 `OperationSpec` has only operation identity/name, attempts, and backoff. The controller always
 cancels a previous execution when a new start arrives. Do not reintroduce queue, join, reject,

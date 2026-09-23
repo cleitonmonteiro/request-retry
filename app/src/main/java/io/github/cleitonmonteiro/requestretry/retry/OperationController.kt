@@ -29,7 +29,6 @@ class OperationController<I, O>(
 ) {
     /** Immutable command snapshot that prevents retries from observing later form edits. */
     private class Session<I>(
-        val token: Long,
         val input: I,
         val spec: OperationSpec,
     ) {
@@ -44,7 +43,6 @@ class OperationController<I, O>(
 
     /** Generous headroom over any realistic burst of manual taps; a full mailbox signals a caller bug. */
     private val mailbox = Channel<suspend () -> Unit>(capacity = 64)
-    private var nextToken = 0L
     private var current: Session<I>? = null
 
     init {
@@ -79,17 +77,17 @@ class OperationController<I, O>(
     }
 
     private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: Duration? = null) {
-        val session = Session(++nextToken, input, spec)
+        val session = Session(input, spec)
         current = session
         _state.value = OperationState.Running(attempt = attempt, maxAttempts = spec.maxAttempts)
         session.job = scope.launch {
             val outcome = executor.execute(input, spec, attempt, call, pendingRetry)
-            mailbox.send { publishOutcome(session.token, outcome) }
+            mailbox.send { publishOutcome(session, outcome) }
         }
     }
 
-    private fun publishOutcome(token: Long, outcome: ExecutionOutcome<O>) {
-        val session = current?.takeIf { it.token == token } ?: return
+    private fun publishOutcome(session: Session<I>, outcome: ExecutionOutcome<O>) {
+        if (current !== session) return
         _state.value = when (outcome) {
             is ExecutionOutcome.Success -> OperationState.Succeeded(
                 data = outcome.data,
