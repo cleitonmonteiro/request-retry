@@ -32,8 +32,6 @@ class OperationController<I, O>(
         val input: I,
         val spec: OperationSpec,
     ) {
-        lateinit var job: Job
-
         /** Cooldown decided by the failure that ended this session, spent by the next retry it authorizes. */
         var pendingRetry: Duration? = null
     }
@@ -43,7 +41,8 @@ class OperationController<I, O>(
 
     /** Generous headroom over any realistic burst of manual taps; a full mailbox signals a caller bug. */
     private val mailbox = Channel<suspend () -> Unit>(capacity = 64)
-    private var current: Session<I>? = null
+    private var currentSession: Session<I>? = null
+    private var currentJob: Job? = null
 
     init {
         scope.launch {
@@ -54,7 +53,7 @@ class OperationController<I, O>(
     /** Cancels any execution in flight and starts a fresh session from this input snapshot. */
     fun start(input: I) {
         enqueue {
-            current?.job?.takeIf { it.isActive }?.cancel()
+            currentJob?.cancel()
             begin(input, specFactory.create(input), attempt = 1)
         }
     }
@@ -62,10 +61,9 @@ class OperationController<I, O>(
     /** No-ops unless the current session is terminally [OperationState.Failed] with [RecoveryAction.Retry]. */
     fun retry() {
         enqueue {
-            if (current?.job?.isActive == true) return@enqueue
             val failed = _state.value as? OperationState.Failed ?: return@enqueue
             if (failed.recovery != RecoveryAction.Retry) return@enqueue
-            val session = current ?: return@enqueue
+            val session = currentSession ?: return@enqueue
             begin(session.input, session.spec, failed.attemptsUsed + 1, session.pendingRetry)
         }
     }
@@ -78,16 +76,16 @@ class OperationController<I, O>(
 
     private fun begin(input: I, spec: OperationSpec, attempt: Int, pendingRetry: Duration? = null) {
         val session = Session(input, spec)
-        current = session
+        currentSession = session
         _state.value = OperationState.Running(attempt = attempt, maxAttempts = spec.maxAttempts)
-        session.job = scope.launch {
+        currentJob = scope.launch {
             val outcome = executor.execute(input, spec, attempt, call, pendingRetry)
             mailbox.send { publishOutcome(session, outcome) }
         }
     }
 
     private fun publishOutcome(session: Session<I>, outcome: ExecutionOutcome<O>) {
-        if (current !== session) return
+        if (currentSession !== session) return
         _state.value = when (outcome) {
             is ExecutionOutcome.Success -> OperationState.Succeeded(
                 data = outcome.data,
